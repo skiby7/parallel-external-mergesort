@@ -8,14 +8,17 @@
 int main(int argc, char *argv[]) {
 //    parseCommandLine(argc, argv);
     parseCommandLine(argc, argv);
-    auto records = generateArray();
-    TIMERSTART(mergesort_seq)
+    std::vector<Record> records;
+    generateArray(records);
+    goto end;
+    //TIMERSTART(mergesort_seq)
     std::sort(records.begin(), records.end(),
               [](const Record a, const Record b) {
                   return a.key < b.key;
               });
-    TIMERSTOP(mergesort_seq)
+    //TIMERSTOP(mergesort_seq)
     assert(checkSorted(records));
+end:
     destroyArray(records);
     return 0;
     

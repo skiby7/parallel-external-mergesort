@@ -12,7 +12,8 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     //TIMERSTART(gen_array);
-    std::vector<Record> records = generateArray();
+    std::vector<Record> records;
+    generateArray(records);
     //TIMERSTOP(gen_array);
     std::vector<Record> sorted_records;
     std::vector<Record*> record_refs;

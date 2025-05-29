@@ -13,8 +13,8 @@ typedef struct {
 } Record;
 
 
-static std::vector<Record> generateArray() {
-    std::vector<Record> records(ARRAY_SIZE);
+static void generateArray(std::vector<Record>& records) {
+    records.resize(ARRAY_SIZE);
     const size_t num_threads = std::thread::hardware_concurrency();
     std::vector<std::thread> threads;
     
@@ -44,8 +44,6 @@ static std::vector<Record> generateArray() {
     for (auto& t : threads) {
         t.join();
     }
-
-    return records;
 }
 
 static inline void destroyArray(std::vector<Record>& array) {
