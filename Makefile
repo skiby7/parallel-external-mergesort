@@ -1,5 +1,5 @@
 CXX		= g++ -std=c++20
-INCLUDES	= -I src/include
+INCLUDES	= -I src/include -I src/fastflow
 CXXFLAGS  	+= -Wall -Werror -pedantic
 
 LDFLAGS 	= -pthread -fopenmp
