@@ -152,15 +152,10 @@ struct WorkerNode : ff::ff_node_t<work_t> {
             auto& merged = work->merge_task->merged_chunk;
 
             merged.resize(a.size() + b.size()); 
-            size_t i = 0, j = 0, k = 0;
-
-            while (i < a.size() && j < b.size()) {
-                merged[k++] = a[i]->key <= b[j]->key ? a[i++] : b[j++];
-            }
-
-            std::copy(a.begin() + i, a.end(), merged.begin() + k);
-            std::copy(b.begin() + j, b.end(), merged.begin() + k + a.size() - i);
-
+            std::merge(a.begin(), a.end(), 
+                b.begin(), b.end(),
+                merged.begin(),
+                [](const auto& x, const auto& y) { return x->key <= y->key; });         
             ff_send_out(work);
         }
         return GO_ON;

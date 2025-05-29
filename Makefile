@@ -4,8 +4,7 @@ CXXFLAGS  += -Wall -Werror -pedantic
 
 LDFLAGS    = -pthread 
 OPTFLAGS   = -O3 -ffast-math -march=native
-DOPTFLAGS  = -g -O0 -lprofiler
-
+DOPTFLAGS  = -g -O0
 TARGETS    = mergesort_seq mergesort_ff
 DEBUG_TARGETS = $(addsuffix _debug, $(TARGETS))
 

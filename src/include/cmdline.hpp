@@ -51,7 +51,7 @@ static inline int parseCommandLine(int argc, char *argv[]) {
                     return -1;
                 }
                 ARRAY_SIZE = s;
-            }
+            } break;
             case 'r': {
                 long r = 0;
                 if (!isNumber(optarg, r)) {
