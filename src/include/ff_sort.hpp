@@ -13,9 +13,9 @@ struct sort_task_t {
 };
 
 struct merge_task_t {
-    std::vector<Record*> chunk_a;
-    std::vector<Record*> chunk_b;
-    std::vector<Record*> merged_chunk;
+    size_t start_a;  // Start index of first chunk in record_refs
+    size_t middle;
+    size_t end_b;    // End index of second chunk in record_refs
 };
 
 struct work_t {
@@ -34,14 +34,19 @@ struct Master : ff::ff_monode_t<work_t> {
     size_t submitted_chunks_count;
     size_t merge_count;
     size_t n_chunks;
-    std::vector<std::vector<std::vector<Record*>>> merge_levels;
+    std::vector<std::vector<std::pair<size_t, size_t>>> merge_levels;
     Master(std::vector<Record*>& record_refs, std::vector<Record>& sorted) : 
         record_refs(record_refs), sorted(sorted), total_records(record_refs.size()),
         current_level(0), submitted_chunks_count(0), merge_count(0), n_chunks(NTHREADS*CHUNKS_PER_THREAD) {
         chunk_size = record_refs.size()/n_chunks;
         remainder = record_refs.size()%n_chunks;
     } 
-     
+    /**
+     * First time I implemented this I used a vector<vector<vector<Record*>>>
+     * to keep track of the merge levels, waiting for the full sort/level merge to completge
+     * before starting a new merge. This is not optimal and the merge alone took more than the 
+     * sequential sort, so I reimplemented this using a deque and a more greedy approach.
+     */
     work_t* svc(work_t* task) {
         if (!task) {
             // Task initialization and send out to workers
@@ -57,75 +62,78 @@ struct Master : ff::ff_monode_t<work_t> {
                 start_idx = end_idx;  // No +1 needed for exclusive
             }
             return GO_ON;
-
         } else if (task->sort_task) {
             submitted_chunks_count--;
 
-
-            // Create chunk of Record* from start to end
-            std::vector<Record*> chunk;
-            chunk.reserve(task->sort_task->end - task->sort_task->start);
-            for (size_t i = task->sort_task->start; i < task->sort_task->end; ++i)
-                chunk.push_back(record_refs[i]);
             if (merge_levels.size() == 0)
-                merge_levels.push_back(std::vector<std::vector<Record*>>());
-            merge_levels[current_level].push_back(std::move(chunk));
+                merge_levels.push_back(std::vector<std::pair<size_t, size_t>>());
+            merge_levels[current_level].push_back({task->sort_task->start, task->sort_task->end});
 
             // If all sorted chunks are collected, start merging
             if (submitted_chunks_count == 0) {
-
-
+                std::sort(merge_levels[current_level].begin(), merge_levels[current_level].end(),
+                      [](const auto& a, const auto& b) {
+                          return a.first < b.first;              
+                       });
                 current_level++;
-                merge_levels.push_back(std::vector<std::vector<Record*>>());
+                merge_levels.push_back(std::vector<std::pair<size_t, size_t>>());
+                
                 for (size_t i = 0; i + 1 < merge_levels[current_level - 1].size(); i += 2) {
-                    auto& a = merge_levels[current_level - 1][i];
-                    auto& b = merge_levels[current_level - 1][i + 1];
-                    ff_send_out(new work_t{nullptr, new merge_task_t{a, b, {}}});
+                    auto& range_a = merge_levels[current_level - 1][i];
+                    auto& range_b = merge_levels[current_level - 1][i + 1];
+                                  
+                    ff_send_out(new work_t{nullptr, new merge_task_t{
+                        range_a.first, range_a.second, range_b.second}});
                 }
-                // If odd, pass the last chunk to next level directly
-                if (merge_levels[current_level - 1].size() % 2 == 1) {
-                    merge_levels[current_level].push_back(
-                        std::move(merge_levels[current_level - 1].back()));
-                }
-            }
+                
+                // If odd, pass the last range to next level directly
+                if (merge_levels[current_level - 1].size() % 2) 
+                    merge_levels[current_level].push_back(merge_levels[current_level - 1].back());
+               
+            }            
             delete task->sort_task;
             delete task;
             return GO_ON;
+
         } else if (task->merge_task) {
-
             merge_count++;
-            merge_levels[current_level].push_back(std::move(task->merge_task->merged_chunk));
-
+            merge_levels[current_level].push_back({task->merge_task->start_a, task->merge_task->end_b});
             size_t expected_merges = merge_levels[current_level - 1].size() / 2;
-
             if (merge_count == expected_merges) {
                 if (merge_levels[current_level].size() == 1) {
-                    // Final merge complete
-                    moveSorted(merge_levels[current_level][0], sorted); 
+                    // Final merge complete - data is already in record_refs
+                    moveSorted(record_refs, sorted); 
                     return EOS;
                 }
 
                 // Start next merge level
+                std::sort(merge_levels[current_level].begin(), merge_levels[current_level].end(),
+                      [](const auto& a, const auto& b) {
+                          return a.first < b.first;              
+                       });
+
                 current_level++;
-                merge_levels.push_back(std::vector<std::vector<Record*>>());
+                merge_levels.push_back(std::vector<std::pair<size_t, size_t>>());
                 merge_count = 0;
+                
                 for (size_t i = 0; i + 1 < merge_levels[current_level - 1].size(); i += 2) {
-                    auto& a = merge_levels[current_level - 1][i];
-                    auto& b = merge_levels[current_level - 1][i + 1];
-                    ff_send_out(new work_t{nullptr, new merge_task_t{a, b, {}}});
+                    auto& range_a = merge_levels[current_level - 1][i];
+                    auto& range_b = merge_levels[current_level - 1][i + 1];
+                    
+                    ff_send_out(new work_t{nullptr, new merge_task_t{
+                        range_a.first, range_a.second, 
+                        range_b.second}});
                 }
 
-                if (merge_levels[current_level - 1].size() % 2 == 1) {
-                    merge_levels[current_level].push_back(
-                        std::move(merge_levels[current_level - 1].back()));
-                }
-            }
+                if (merge_levels[current_level - 1].size() % 2) 
+                    merge_levels[current_level].push_back(merge_levels[current_level - 1].back());
+                
+            }           
 
             delete task->merge_task;
             delete task;
             return GO_ON;
         }
-        
         return EOS;
     }
 };
@@ -141,21 +149,24 @@ struct Master : ff::ff_monode_t<work_t> {
 
 struct WorkerNode : ff::ff_node_t<work_t> {
     std::vector<Record*>& record_refs; 
-    WorkerNode(std::vector<Record*>& record_refs) : record_refs(record_refs) {}
+    std::vector<Record*> temp_buffer; // Temporary buffer for in-place merge
+    WorkerNode(std::vector<Record*>& record_refs) : record_refs(record_refs) {
+        temp_buffer.reserve(record_refs.size() / 2);
+    }
     work_t* svc(work_t* work) {
         if (work->sort_task) {
-            boundedMergeSort(record_refs, work->sort_task->start, work->sort_task->end-1);
+            std::sort(record_refs.begin() + work->sort_task->start, record_refs.begin() + work->sort_task->end,
+              [](const Record* a, const Record* b) {
+                  return a->key < b->key;
+            });
             ff_send_out(work);
         } else if (work->merge_task) {
-            auto& a = work->merge_task->chunk_a;
-            auto& b = work->merge_task->chunk_b;
-            auto& merged = work->merge_task->merged_chunk;
-
-            merged.resize(a.size() + b.size()); 
-            std::merge(a.begin(), a.end(), 
-                b.begin(), b.end(),
-                merged.begin(),
-                [](const auto& x, const auto& y) { return x->key <= y->key; });         
+            auto start_a = record_refs.begin() + work->merge_task->start_a;
+            auto middle = record_refs.begin() + work->merge_task->middle;
+            auto end_b = record_refs.begin() + work->merge_task->end_b;
+            
+            std::inplace_merge(start_a, middle, end_b,
+                [](const Record* x, const Record* y) { return x->key <= y->key; });        
             ff_send_out(work);
         }
         return GO_ON;
