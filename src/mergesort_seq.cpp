@@ -6,10 +6,9 @@
 #include "include/hpc_helpers.hpp"
 
 int main(int argc, char *argv[]) {
-//    parseCommandLine(argc, argv);
-    parseCommandLine(argc, argv);
-
-
+    if(parseCommandLine(argc, argv) < 0) {
+        return -1;
+    }
     std::vector<Record> records;
     generateArray(records);
     TIMERSTART(mergesort_seq)

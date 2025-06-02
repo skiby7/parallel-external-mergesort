@@ -22,7 +22,6 @@ static std::vector<Record> generateArray(std::vector<Record>& records) {
         record.rpayload = new char[RECORD_SIZE];
     }
 
-
     auto worker = [&](size_t start, size_t end) {
         for (size_t i = start; i < end; i++) {
             records[i].key = feistel_encrypt((uint32_t)i, 0xDEADBEEF, ROUNDS);
@@ -50,8 +49,30 @@ static std::vector<Record> generateArray(std::vector<Record>& records) {
 }
 
 static inline void destroyArray(std::vector<Record>& array) {
-    for (auto record : array)
-        delete[] record.rpayload;
+    const size_t num_threads = std::thread::hardware_concurrency();
+    std::vector<std::thread> threads;
+
+    auto worker = [&](size_t start, size_t end) {
+        for (size_t i = start; i < end; ++i) {
+            delete[] array[i].rpayload;
+            array[i].rpayload = nullptr; // Optional: prevent dangling pointer
+        }
+    };
+
+    size_t total = array.size();
+    size_t chunk_size = total / num_threads;
+    size_t remainder = total % num_threads;
+    size_t start = 0;
+
+    for (size_t i = 0; i < num_threads; ++i) {
+        size_t end = start + chunk_size + (i < remainder ? 1 : 0);
+        threads.emplace_back(worker, start, end);
+        start = end;
+    }
+
+    for (auto& t : threads) {
+        t.join();
+    }
 }
 
 static inline bool checkSorted(std::vector<Record> array) {
@@ -62,16 +83,27 @@ static inline bool checkSorted(std::vector<Record> array) {
     return true;
 }
 
-static inline void moveSorted(std::vector<Record*> &arr, std::vector<Record>& sorted) {
-    sorted.resize(arr.size());
+static inline void moveSorted(Record* records, size_t total_records, std::vector<Record>& sorted) {
+    sorted.resize(total_records);
     const size_t BATCH_SIZE = 64;
+    const size_t UNROLL = 8;
     size_t i = 0;
-    for (; i + BATCH_SIZE <= arr.size(); i += BATCH_SIZE) 
-        for (size_t j = 0; j < BATCH_SIZE; ++j) 
-            sorted[i + j] = *arr[i + j];
     
-    for (; i < arr.size(); ++i) 
-        sorted[i] = *arr[i];
+    for (; i + BATCH_SIZE <= total_records; i += BATCH_SIZE) {
+        for (size_t j = 0; j < BATCH_SIZE; j += UNROLL) {
+            sorted[i + j + 0] = records[i + j + 0];
+            sorted[i + j + 1] = records[i + j + 1];
+            sorted[i + j + 2] = records[i + j + 2];
+            sorted[i + j + 3] = records[i + j + 3];
+            sorted[i + j + 4] = records[i + j + 4];
+            sorted[i + j + 5] = records[i + j + 5];
+            sorted[i + j + 6] = records[i + j + 6];
+            sorted[i + j + 7] = records[i + j + 7];
+        }
+    }
+
+    for (; i < total_records; ++i)
+        sorted[i] = records[i];
 }
 
 static inline void boundedMergeSort(std::vector<Record*> &arr, int left, int right) {

@@ -26,8 +26,7 @@ struct work_t {
 
 
 struct Master : ff::ff_monode_t<work_t> {
-    std::vector<Record*>& record_refs; 
-    std::vector<Record>& sorted;
+    Record* records;
     const size_t total_records; 
     size_t remainder; 
     size_t chunk_size; 
@@ -39,12 +38,12 @@ struct Master : ff::ff_monode_t<work_t> {
     std::chrono::high_resolution_clock::time_point end;
     size_t active_threads;
     std::vector<std::vector<std::pair<size_t, size_t>>> merge_levels;
-    Master(std::vector<Record*>& record_refs, std::vector<Record>& sorted) : 
-        record_refs(record_refs), sorted(sorted), total_records(record_refs.size()),
+    Master(std::vector<Record>& records) : 
+        records(records.data()), total_records(records.size()),
         current_level(0), submitted_chunks_count(0), merge_count(0),
         n_chunks(NTHREADS), active_threads(NTHREADS) {
-        chunk_size = record_refs.size()/n_chunks;
-        remainder = record_refs.size()%n_chunks;
+        chunk_size = records.size()/n_chunks;
+        remainder = records.size()%n_chunks;
     } 
     
     void kill_threads(size_t expected_merges) {
@@ -56,7 +55,7 @@ struct Master : ff::ff_monode_t<work_t> {
         size_t start_idx = 0;
         for (size_t i = 0; i < n_chunks; i++) {
             size_t current_chunk_size = chunk_size + (i < remainder ? 1 : 0);
-            size_t end_idx = std::min(start_idx + current_chunk_size, record_refs.size());
+            size_t end_idx = std::min(start_idx + current_chunk_size, total_records);
             
             if (start_idx < total_records) {
                 ff_send_out(new work_t{new sort_task_t{start_idx, end_idx, i}, nullptr});
@@ -118,11 +117,9 @@ struct Master : ff::ff_monode_t<work_t> {
             // we can free some resources
             kill_threads(expected_merges);
             if (merge_count == expected_merges) {
-                if (merge_levels[current_level].size() == 1) {
-                    // Final merge complete - data is already in record_refs
-                    moveSorted(record_refs, sorted); 
+                if (merge_levels[current_level].size() == 1) 
                     return EOS;
-                }
+                
 
                 // Start next merge level
                 // Sort the chunks to merge in place
@@ -167,22 +164,22 @@ struct Master : ff::ff_monode_t<work_t> {
 
 
 struct WorkerNode : ff::ff_node_t<work_t> {
-    std::vector<Record*>& record_refs; 
-    WorkerNode(std::vector<Record*>& record_refs) : record_refs(record_refs) {}
+    Record* records; 
+    WorkerNode(std::vector<Record>& records) : records(records.data()) {}
     work_t* svc(work_t* work) {
         if (work->sort_task) {
-            std::sort(record_refs.begin() + work->sort_task->start,
-                      record_refs.begin() + work->sort_task->end,
-                [](const Record* a, const Record* b) {
-                  return a->key < b->key;
+            std::sort(records + work->sort_task->start,
+                      records + work->sort_task->end,
+                [](const Record& a, const Record& b) {
+                  return a.key < b.key;
             });
             ff_send_out(work);
         } else if (work->merge_task) {
-            auto start_a = record_refs.begin() + work->merge_task->start_a;
-            auto middle = record_refs.begin() + work->merge_task->middle;
-            auto end_b = record_refs.begin() + work->merge_task->end_b;
+            auto start_a = records + work->merge_task->start_a;
+            auto middle = records + work->merge_task->middle;
+            auto end_b = records + work->merge_task->end_b;
             std::inplace_merge(start_a, middle, end_b,
-                [](const Record* x, const Record* y) { return x->key <= y->key; });        
+                [](const Record& x, const Record& y) { return x.key <= y.key; });        
             ff_send_out(work);
         }
         return GO_ON;
