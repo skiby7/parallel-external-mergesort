@@ -7,6 +7,5 @@ static unsigned int RECORD_SIZE = 64;
 static unsigned int ARRAY_SIZE = 10000;
 static unsigned int ROUNDS = 4;
 static unsigned int SORT_THRESHOLD = 64;
-static unsigned int CHUNKS_PER_THREAD = 1;
 
 #endif // !_CONFIG_HPP

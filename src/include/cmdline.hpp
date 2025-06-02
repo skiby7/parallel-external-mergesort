@@ -19,7 +19,6 @@ static inline void usage(const char *argv0) {
     std::printf(" -t T: number of ff threads (default=%d)\n", NTHREADS);
     std::printf(" -d D: change feistel rounds to change the Record->key value (default=%d)\n", ROUNDS);
     std::printf(" -x X: set the threshold under which the arrays are sorted using std::sort (default=%d)\n", SORT_THRESHOLD);
-    std::printf(" -k K: set the number of chunks per thread (default=%d)\n", CHUNKS_PER_THREAD);
     std::printf("--------------------\n");
 }
 
@@ -83,16 +82,6 @@ static inline int parseCommandLine(int argc, char *argv[]) {
                 start += 2;
             } break;
 
-            case 'k': {
-                long k = 0;
-                if (!isNumber(optarg, k) || k < 1) {
-                    std::fprintf(stderr, "Error: wrong '-k' option\n");
-                    usage(argv[0]);
-                    return -1;
-                }
-                CHUNKS_PER_THREAD = k;
-                start += 2;
-            } break;
             case 'x': {
                 long x = 0;
                 if (!isNumber(optarg, x) || x < 1) {
