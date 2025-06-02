@@ -13,9 +13,9 @@ struct sort_task_t {
 };
 
 struct merge_task_t {
-    size_t start_a;  // Start index of first chunk in record_refs
+    size_t start_a;  
     size_t middle;
-    size_t end_b;    // End index of second chunk in record_refs
+    size_t end_b;    
 };
 
 struct work_t {
@@ -34,19 +34,21 @@ struct Master : ff::ff_monode_t<work_t> {
     size_t submitted_chunks_count;
     size_t merge_count;
     size_t n_chunks;
+    size_t active_threads;
     std::vector<std::vector<std::pair<size_t, size_t>>> merge_levels;
     Master(std::vector<Record*>& record_refs, std::vector<Record>& sorted) : 
         record_refs(record_refs), sorted(sorted), total_records(record_refs.size()),
-        current_level(0), submitted_chunks_count(0), merge_count(0), n_chunks(NTHREADS*CHUNKS_PER_THREAD) {
+        current_level(0), submitted_chunks_count(0), merge_count(0),
+        n_chunks(NTHREADS*CHUNKS_PER_THREAD), active_threads(NTHREADS) {
         chunk_size = record_refs.size()/n_chunks;
         remainder = record_refs.size()%n_chunks;
     } 
-    /**
-     * First time I implemented this I used a vector<vector<vector<Record*>>>
-     * to keep track of the merge levels, waiting for the full sort/level merge to completge
-     * before starting a new merge. This is not optimal and the merge alone took more than the 
-     * sequential sort, so I reimplemented this using a deque and a more greedy approach.
-     */
+    
+    void kill_threads(size_t expected_merges) {
+        while (active_threads > expected_merges) 
+            ff_send_out_to(EOS, --active_threads);
+    }
+
     work_t* svc(work_t* task) {
         if (!task) {
             // Task initialization and send out to workers
@@ -82,14 +84,14 @@ struct Master : ff::ff_monode_t<work_t> {
                     auto& range_a = merge_levels[current_level - 1][i];
                     auto& range_b = merge_levels[current_level - 1][i + 1];
                                   
-                    ff_send_out(new work_t{nullptr, new merge_task_t{
-                        range_a.first, range_a.second, range_b.second}});
+                    ff_send_out_to(new work_t{nullptr, new merge_task_t{
+                        range_a.first, range_a.second, range_b.second}}, i);
                 }
                 
                 // If odd, pass the last range to next level directly
                 if (merge_levels[current_level - 1].size() % 2) 
                     merge_levels[current_level].push_back(merge_levels[current_level - 1].back());
-               
+                 
             }            
             delete task->sort_task;
             delete task;
@@ -99,6 +101,7 @@ struct Master : ff::ff_monode_t<work_t> {
             merge_count++;
             merge_levels[current_level].push_back({task->merge_task->start_a, task->merge_task->end_b});
             size_t expected_merges = merge_levels[current_level - 1].size() / 2;
+            kill_threads(expected_merges);
             if (merge_count == expected_merges) {
                 if (merge_levels[current_level].size() == 1) {
                     // Final merge complete - data is already in record_refs
@@ -120,9 +123,9 @@ struct Master : ff::ff_monode_t<work_t> {
                     auto& range_a = merge_levels[current_level - 1][i];
                     auto& range_b = merge_levels[current_level - 1][i + 1];
                     
-                    ff_send_out(new work_t{nullptr, new merge_task_t{
+                    ff_send_out_to(new work_t{nullptr, new merge_task_t{
                         range_a.first, range_a.second, 
-                        range_b.second}});
+                        range_b.second}}, i);
                 }
 
                 if (merge_levels[current_level - 1].size() % 2) 
