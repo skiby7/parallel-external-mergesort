@@ -1,31 +1,160 @@
 #ifndef _COMMON_HPP
 #define _COMMON_HPP
 
+#include <cerrno>
+#include <cstddef>
+#include <iostream>
+#include <cstdint>
+#include <cstdlib>
+#include <sys/types.h>
 #include <vector>
+#include <fstream>
 #include <algorithm>
+#include <string>
 #include <cstring>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include "config.hpp"
 #include "feistel.hpp"
 
-typedef struct {
+typedef struct _Record {
     unsigned long key; // The items are sorted using this key
+    uint32_t len;
     char *rpayload;
+    _Record() : key(0), len(0), rpayload(nullptr) {}
+    _Record(unsigned long _key, uint32_t _len, char *payload) {
+        key = _key;
+        len = _len;
+        rpayload = new char[len];
+        memmove(rpayload, payload, len);
+    }
+    _Record(const _Record& other) {
+        key = other.key;
+        len = other.len;
+        rpayload = new char[len];
+        memmove(rpayload, other.rpayload, len);
+    }
+    ~_Record() {
+        delete[] rpayload;
+    }
+
+    bool operator < (const _Record &a) const {
+        return key < a.key;
+    }
+
+    bool operator <= (const _Record &a) const {
+        return key <= a.key;
+    }
+
+    bool operator == (const _Record &a) const {
+        return key == a.key;
+    }
+
+    bool operator >= (const _Record &a) const {
+        return key >= a.key;
+    }
+
+    bool operator > (const _Record &a) const {
+        return key > a.key;
+    }
 } Record;
 
 
+
+static void writeRecordsToFile(const std::string& filename, std::vector<Record> records) {
+    int fp = open(filename.c_str(), O_WRONLY | O_CREAT | O_EXCL, 666);
+    if (fp < 0) {
+        if (errno == EEXIST)
+            fp = open(filename.c_str(), O_WRONLY);
+        else {
+            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
+            exit(-1);
+        }
+    }
+    for (auto record: records) {
+        if (write(fp, &record.key, sizeof(record.key)) < 0) exit(-1);
+        if (write(fp, &record.len, sizeof(record.len)) < 0) exit(-1);
+        if (write(fp, record.rpayload, record.len) < 0) exit(-1);
+    }
+    close(fp);
+}
+
+static size_t readRecordsFromFile(const std::string& filename, std::vector<Record>& records, size_t offset, size_t max_size) {
+    int fp = open(filename.c_str(), O_RDONLY);
+    if (fp < 0) {
+        std::cerr << "Error opening file for reading: " << filename << " " << strerror(errno) << std::endl;
+        exit(-1);
+    }
+
+    // Setting the cursor to the offset
+    lseek(fp, offset, SEEK_SET);
+    size_t bytes_read = 0;
+    size_t read_size = 0;
+    size_t loop_count = 0;
+    unsigned long key = 0;
+    uint32_t len = 0;
+    char* buffer = new char[RECORD_SIZE];
+    // Reading as much bytes as possible
+
+    while (true) {
+        read_size = read(fp, &key, sizeof(key));
+        if (read_size == 0) break;
+        else if (read_size < 0) exit(-1);
+        else  loop_count += read_size;
+        if (bytes_read + loop_count > max_size) break;
+
+        read_size = read(fp, &len, sizeof(len));
+        if (read_size == 0) break;
+        else if (read_size < 0) exit(-1);
+        else loop_count += read_size;
+        if (bytes_read + loop_count > max_size) break;
+
+        read_size = read(fp, buffer, len);
+        if (read_size == 0) break;
+        else if (read_size < 0) exit(-1);
+        else loop_count += read_size;
+        if (bytes_read + loop_count > max_size) break;
+
+        bytes_read += loop_count;
+
+        Record tmp = Record{key, len, buffer};
+        records.push_back(std::move(tmp));
+    }
+
+    delete[] buffer;
+    close(fp);
+    return bytes_read;
+}
+
+
+static void generateFile(std::string filename) {
+
+    Record record;
+    std::vector<Record> records;
+    for (size_t i = 0; i < ARRAY_SIZE; i++) {
+        record.key = feistel_encrypt((uint32_t)i, 0xDEADBEEF, ROUNDS);
+        record.len = rand() % (RECORD_SIZE - 8) + 8;
+        record.rpayload = new char[record.len];
+        for (size_t j = 0; j < record.len; j++) {
+            record.rpayload[j] = feistel_encrypt(j+i, 0x01, 1) & 0xFF;
+        }
+        records.push_back(record);
+    }
+    writeRecordsToFile(filename, records);
+    records.clear();
+}
 static std::vector<Record> generateArray(std::vector<Record>& records) {
     records.resize(ARRAY_SIZE);
     const size_t num_threads = std::thread::hardware_concurrency();
     std::vector<std::thread> threads;
-    
-    for (auto& record : records) {
-        record.rpayload = new char[RECORD_SIZE];
-    }
 
     auto worker = [&](size_t start, size_t end) {
         for (size_t i = start; i < end; i++) {
             records[i].key = feistel_encrypt((uint32_t)i, 0xDEADBEEF, ROUNDS);
-            for (size_t j = 0; j < RECORD_SIZE; j++) {
+            records[i].len = rand() % (RECORD_SIZE - 8) + 8;
+            records[i].rpayload = new char[records[i].len];
+            for (size_t j = 0; j < records[i].len; j++) {
                 records[i].rpayload[j] = feistel_encrypt(j+i, 0x01, 1) & 0xFF;
             }
         }
@@ -34,7 +163,7 @@ static std::vector<Record> generateArray(std::vector<Record>& records) {
     size_t chunk_size = ARRAY_SIZE / num_threads;
     size_t remaining = ARRAY_SIZE % num_threads;
     size_t start = 0;
-    
+
     for (size_t i = 0; i < num_threads; i++) {
         size_t end = start + chunk_size + (i < remaining ? 1 : 0);
         threads.emplace_back(worker, start, end);
@@ -88,7 +217,7 @@ static inline void moveSorted(Record* records, size_t total_records, std::vector
     const size_t BATCH_SIZE = 64;
     const size_t UNROLL = 8;
     size_t i = 0;
-    
+
     for (; i + BATCH_SIZE <= total_records; i += BATCH_SIZE) {
         for (size_t j = 0; j < BATCH_SIZE; j += UNROLL) {
             sorted[i + j + 0] = records[i + j + 0];

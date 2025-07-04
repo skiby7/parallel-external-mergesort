@@ -5,6 +5,7 @@
 #include "include/hpc_helpers.hpp"
 #include "include/ff_sort.hpp"
 #include <ff/ff.hpp>
+#include <mpi.h>
 
 int main(int argc, char *argv[]) {
     if(parseCommandLine(argc, argv) < 0) {
@@ -36,3 +37,4 @@ int main(int argc, char *argv[]) {
     destroyArray(records);
     return 0;
 }
+
