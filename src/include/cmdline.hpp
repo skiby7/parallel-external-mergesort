@@ -50,6 +50,7 @@ static inline int parseCommandLine(int argc, char *argv[]) {
                     return -1;
                 }
                 ARRAY_SIZE = s;
+                start += 2;
             } break;
             case 'r': {
                 long r = 0;
@@ -97,6 +98,6 @@ static inline int parseCommandLine(int argc, char *argv[]) {
                 return -1;
         }
     }
-    return 0;
+    return start;
 }
 #endif // !_CMDLINE_HPP

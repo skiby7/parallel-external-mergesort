@@ -1,13 +1,11 @@
 #include "include/common.hpp"
 #include "include/config.hpp"
-#include "include/plower.hpp"
+#include "include/sorting.hpp"
 #include <cstddef>
 #include <iostream>
 #include <vector>
 
 int main() {
-    std::vector<Record> records;
-    ARRAY_SIZE = 200;
     // generateArray(records);
     // Record* data = records.data();
     // Plower plower(100, data, 100);
@@ -19,13 +17,8 @@ int main() {
     // while ((elem = plower.step(nullptr))) {
     //     std::cout << elem->key << std::endl;
     // }
-    generateFile("/tmp/file.dat");
-    std::cout << "Files written" << std::endl;
-    std::vector<Record> recs;
-    size_t bytes_read = readRecordsFromFile("/tmp/file.dat", recs, 0, 100);
-    std::cout << "Bytes read: " << bytes_read << std::endl;
-    for (const auto& rec : recs) {
-        std::cout << rec.key << std::endl;
-    }
+
+    genSequenceFiles("/tmp/file.dat", 0, getFileSize("/tmp/file.dat"), 1 << 7, "/tmp/run");
+    printRunFiles("/tmp/run");
     return 0;
 }
