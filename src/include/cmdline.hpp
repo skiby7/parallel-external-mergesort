@@ -19,6 +19,7 @@ static inline void usage(const char *argv0) {
     std::printf(" -t T: number of ff threads (default=%d)\n", NTHREADS);
     std::printf(" -d D: change feistel rounds to change the Record->key value (default=%d)\n", ROUNDS);
     std::printf(" -x X: set the threshold under which the arrays are sorted using std::sort (default=%d)\n", SORT_THRESHOLD);
+    std::printf(" -m M: set the max memory usage (default=%ld)\n", MAX_MEMORY);
     std::printf("--------------------\n");
 }
 
@@ -37,7 +38,7 @@ static bool isNumber(const char* s, long &n) {
 
 static inline int parseCommandLine(int argc, char *argv[]) {
     extern char *optarg;
-    const std::string optstr = "r:s:t:d:x:k:";
+    const std::string optstr = "r:s:t:d:x:m:";
     long opt, start = 1;
 
     while ((opt = getopt(argc, argv, optstr.c_str())) != -1) {
@@ -50,6 +51,16 @@ static inline int parseCommandLine(int argc, char *argv[]) {
                     return -1;
                 }
                 ARRAY_SIZE = s;
+                start += 2;
+            } break;
+            case 'm': {
+                long m = 0;
+                if (!isNumber(optarg, m)) {
+                    std::fprintf(stderr, "Error: wrong '-m' option\n");
+                    usage(argv[0]);
+                    return -1;
+                }
+                MAX_MEMORY = m;
                 start += 2;
             } break;
             case 'r': {

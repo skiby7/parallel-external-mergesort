@@ -170,7 +170,7 @@ static size_t appendRecordsToFile(const std::string& filename, std::vector<Recor
 
 
 template<typename Container>
-static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_size) {
+static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
     int fp = open(filename.c_str(), O_RDONLY);
     if (fp < 0) {
         std::cerr << "Error opening file for reading: " << filename << " " << strerror(errno) << std::endl;
@@ -184,7 +184,8 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
     size_t loop_count = 0;
     unsigned long key = 0;
     uint32_t len = 0;
-    char* buffer = new char[RECORD_SIZE];
+    size_t current_size = RECORD_SIZE;
+    char* buffer = new char[current_size];
     // Reading as much bytes as possible
 
     while (true) {
@@ -192,20 +193,25 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
         if (read_size == 0) break;
         else if (read_size < 0) exit(-1);
         else  loop_count += read_size;
-        if (bytes_read + loop_count > max_size) break;
+        if (bytes_read + loop_count > max_mem) break;
 
         read_size = read(fp, &len, sizeof(len));
         if (read_size == 0) break;
         else if (read_size < 0) exit(-1);
         else loop_count += read_size;
-        if (bytes_read + loop_count > max_size) break;
+        if (bytes_read + loop_count > max_mem) break;
 
-        memset(buffer, 0, RECORD_SIZE);
+        if (len+1 > current_size) {
+            delete[] buffer;
+            current_size = len+1;
+            buffer = new char[current_size];
+        }
+        memset(buffer, 0, current_size);
         read_size = read(fp, buffer, len);
         if (read_size == 0) break;
         else if (read_size < 0) exit(-1);
         else loop_count += read_size;
-        if (bytes_read + loop_count > max_size) break;
+        if (bytes_read + loop_count > max_mem) break;
 
         bytes_read += loop_count;
 
