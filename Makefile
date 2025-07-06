@@ -2,10 +2,10 @@ CXX        = g++ -std=c++20
 INCLUDES   = -I src/include -I src/fastflow
 CXXFLAGS  += -Wall -Werror -pedantic -Wno-unused-function
 
-LDFLAGS    = -pthread
+LDFLAGS    = -pthread -fopenmp
 OPTFLAGS   = -O3 -ffast-math -march=native
 DOPTFLAGS  = -g -O0
-TARGETS    = mergesort_seq mergesort_ff
+TARGETS    = mergesort_seq mergesort_omp mergesort_ff
 DEBUG_TARGETS = $(addsuffix _debug, $(TARGETS))
 
 SRC_DIR = src

@@ -18,7 +18,8 @@ int main() {
     //     std::cout << elem->key << std::endl;
     // }
 
-    genSequenceFiles("/tmp/file.dat", 0, getFileSize("/tmp/file.dat"), 1 << 7, "/tmp/run");
-    printRunFiles("/tmp/run");
+    // genSequenceFiles("/tmp/file.dat", 0, getFileSize("/tmp/file.dat"), 1 << 7, "/tmp/run");
+    // printRunFiles("/tmp/output.dat");
+    checkSortedFile("/tmp/output.dat");
     return 0;
 }

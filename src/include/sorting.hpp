@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 #include "config.hpp"
+#include <algorithm>
 #include <cstring>
 #include <iostream>
 #include <string>
@@ -28,142 +29,100 @@ static std::string removeSubstring(std::string str, const std::string& toRemove)
     return str;
 }
 
-// static std::string mergeFiles(const std::string& file1, const std::string& file2, size_t max_mem) {
-//     std::vector<Record> buffer1;
-//     std::vector<Record> buffer2;
-//     std::string output_filename = "/tmp/run";
-//     output_filename += removeSubstring(basename(file1.c_str()), "run");
-//     output_filename += "_";
-//     output_filename += removeSubstring(basename(file2.c_str()), "run");
-//     size_t bytes_read1 = readRecordsFromFile(file1, buffer1, 0, max_mem/2);
-//     size_t bytes_read2 = readRecordsFromFile(file2, buffer2, 0, max_mem/2);
-//     size_t bytes_freed = 0;
-//     size_t last_read = 0;
 
-//     while (!buffer1.empty() && !buffer2.empty()) {
-//         if (buffer1.front() < buffer2.front()) {
-//             bytes_freed += appendRecordToFile(output_filename, buffer1.front());
-//             buffer1.erase(buffer1.begin());
-//             last_read += readRecordsFromFile(file1, buffer1, bytes_read1, bytes_freed);
-//             if (last_read > 0) {
-//                 bytes_read1 += last_read;
-//                 bytes_freed -= last_read;
-//             }
-//         } else {
-//             bytes_freed += appendRecordToFile(output_filename, buffer2.front());
-//             buffer2.erase(buffer2.begin());
-//             last_read += readRecordsFromFile(file2, buffer2, bytes_read2, bytes_freed);
-//             if (last_read > 0) {
-//                 bytes_read1 += last_read;
-//                 bytes_freed -= last_read;
-//             }
-//         }
-//     }
-//     deleteFile(file1.c_str());
-//     deleteFile(file2.c_str());
+static ssize_t writeBatchToFile(int fp, std::vector<Record>& records) {
+    std::vector<char> buffer;
 
-//     return output_filename;
-// }
-//
-static void writeRecordsBatch(int fd, const std::vector<Record>& records) {
-    // Calculate total size needed
-    size_t total_size = 0;
-    for (const auto& record : records) {
-        total_size += sizeof(record.key) + sizeof(record.len) + record.len;
-    }
+    while (!records.empty()) {
+        Record record = records.front();
+        const char* key_ptr = reinterpret_cast<const char*>(&record.key);
+        buffer.insert(buffer.end(), key_ptr, key_ptr + sizeof(record.key));
 
-    // Create contiguous buffer for batch write
-    std::vector<char> write_buffer(total_size);
-    char* ptr = write_buffer.data();
+        const char* len_ptr = reinterpret_cast<const char*>(&record.len);
+        buffer.insert(buffer.end(), len_ptr, len_ptr + sizeof(record.len));
 
-    for (const auto& record : records) {
-        memcpy(ptr, &record.key, sizeof(record.key));
-        ptr += sizeof(record.key);
-        memcpy(ptr, &record.len, sizeof(record.len));
-        ptr += sizeof(record.len);
-        memcpy(ptr, record.rpayload, record.len);
-        ptr += record.len;
+        buffer.insert(buffer.end(), record.rpayload, record.rpayload + record.len);
+        records.erase(records.begin());
     }
 
     // Single write call
-    ssize_t bytes_written = write(fd, write_buffer.data(), total_size);
-    if (bytes_written < 0 || (size_t)bytes_written != total_size) {
-        std::cerr << "Error writing batch: " << strerror(errno) << std::endl;
+    ssize_t result = write(fp, buffer.data(), buffer.size());
+    if (result < 0) {
+        std::cerr << "Error writing to file: " << strerror(errno) << std::endl;
         exit(-1);
     }
+
+    return static_cast<ssize_t>(result);
 }
-static std::string mergeFiles(const std::string& file1, const std::string& file2, size_t max_mem) {
+
+static std::string mergeFiles(const std::string& file1, const std::string& file2, ssize_t max_mem) {
     std::vector<Record> buffer1;
     std::vector<Record> buffer2;
-    std::vector<Record> output_buffer; // Batch output writes
-
+    std::vector<Record> output_buffer;
     std::string output_filename = "/tmp/run";
     output_filename += removeSubstring(basename(file1.c_str()), "run");
     output_filename += "_";
     output_filename += removeSubstring(basename(file2.c_str()), "run");
+    ssize_t bytes_to_process1 = getFileSize(file1);
+    ssize_t bytes_to_process2 = getFileSize(file2);
+    ssize_t bytes_read1 = readRecordsFromFile(file1, buffer1, 0, max_mem/2);
+    ssize_t bytes_read2 = readRecordsFromFile(file2, buffer2, 0, max_mem/2);
+    // ssize_t bytes_freed = 0;
+    // ssize_t last_read = 0;
 
-    size_t buffer_size = max_mem / 3; // Reserve 1/3 for output buffer
-    size_t bytes_read1 = readRecordsFromFile(file1, buffer1, 0, buffer_size);
-    size_t bytes_read2 = readRecordsFromFile(file2, buffer2, 0, buffer_size);
-
-    size_t idx1 = 0, idx2 = 0; // Use indices instead of erasing
-    const size_t BATCH_SIZE = 1000; // Batch size for output writes
-
-    // Keep file descriptor open for output
-    int output_fd = open(output_filename.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
-    if (output_fd < 0) {
-        std::cerr << "Error opening output file: " << output_filename << " " << strerror(errno) << std::endl;
-        exit(-1);
-    }
-
-    while (idx1 < buffer1.size() || idx2 < buffer2.size()) {
-        // Refill buffers when needed
-        if (idx1 >= buffer1.size() && bytes_read1 > 0) {
-            buffer1.clear();
-            idx1 = 0;
-            bytes_read1 = readRecordsFromFile(file1, buffer1, bytes_read1, buffer_size);
-        }
-        if (idx2 >= buffer2.size() && bytes_read2 > 0) {
-            buffer2.clear();
-            idx2 = 0;
-            bytes_read2 = readRecordsFromFile(file2, buffer2, bytes_read2, buffer_size);
-        }
-
-        // Check if we're done
-        if (idx1 >= buffer1.size() && idx2 >= buffer2.size()) break;
-
-        // Merge logic
-        if (idx1 < buffer1.size() && (idx2 >= buffer2.size() || buffer1[idx1] < buffer2[idx2])) {
-            output_buffer.push_back(buffer1[idx1++]);
-        } else if (idx2 < buffer2.size()) {
-            output_buffer.push_back(buffer2[idx2++]);
-        }
-
-        // Flush output buffer when it gets large
-        if (output_buffer.size() >= BATCH_SIZE) {
-            writeRecordsBatch(output_fd, output_buffer);
-            output_buffer.clear();
+    int fp = open(output_filename.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666);
+    if (fp < 0) {
+        if (errno == EEXIST)
+            fp = open(output_filename.c_str(), O_WRONLY | O_APPEND);
+        else {
+            std::cerr << "Error opening file for writing: " << output_filename << " " << strerror(errno) << std::endl;
+            exit(-1);
         }
     }
 
-    // Write remaining output buffer
-    if (!output_buffer.empty()) {
-        writeRecordsBatch(output_fd, output_buffer);
-    }
+    while (bytes_read1 < bytes_to_process1 || bytes_read2 < bytes_to_process2){
+        while (!buffer1.empty() && !buffer2.empty()) {
+            if (buffer1.empty()) {
+                for (size_t i = 0; i < buffer2.size(); i++)
+                    output_buffer.push_back(std::move(buffer2[i]));
+                buffer2.clear();
+                break;
+            }
+            if (buffer2.empty()) {
+                for (size_t i = 0; i < buffer1.size(); i++)
+                    output_buffer.push_back(std::move(buffer1[i]));
+                buffer1.clear();
+                break;
+            }
+            if (buffer1.front() < buffer2.front()) {
+                output_buffer.push_back(std::move(buffer1.front()));
+                buffer1.erase(buffer1.begin());
+            } else {
+                output_buffer.push_back(std::move(buffer2.front()));
+                buffer2.erase(buffer2.begin());
+            }
+        }
+        buffer1.clear();
+        buffer2.clear();
+        writeBatchToFile(fp,  output_buffer);
+        output_buffer.clear();
 
-    close(output_fd);
+        bytes_read1 += readRecordsFromFile(file1, buffer1, 0, max_mem/2);
+        bytes_read2 += readRecordsFromFile(file2, buffer2, 0, max_mem/2);
+
+    }
     deleteFile(file1.c_str());
     deleteFile(file2.c_str());
+    close(fp);
     return output_filename;
 }
 
-// Optimized batch write function
 
 static void genSequenceFiles(
     const std::string& input_filename,
-    size_t offset,
-    size_t bytes_to_process,
-    size_t max_memory,
+    ssize_t offset,
+    ssize_t bytes_to_process,
+    ssize_t max_memory,
     const std::string& output_filename_prefix
 ) {
     std::cout << "Generating sequence files..." << std::endl;
@@ -173,14 +132,14 @@ static void genSequenceFiles(
     std::cout << "Max memory: " << max_memory << std::endl;
     std::cout << "Output file prefix: " << output_filename_prefix << std::endl;
 
-    size_t usable_mem = (max_memory * 9)/10; // Leaving a 10% of space to read and write records
+    ssize_t usable_mem = (max_memory * 9)/10; // Leaving a 10% of space to read and write records
     std::vector<Record> unsorted;
     std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
     std::vector<Record> buffer;
     // Skip the unsorted initialization and push the records directly to the heap
-    size_t bytes_read = readRecordsFromFile(input_filename, heap, offset, usable_mem);
-    size_t run = 1, bytes_freed = 0, last_read = bytes_read;
-    while (bytes_read < bytes_to_process) { // I have to process all the bytes in the file
+    ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, usable_mem);
+    ssize_t run = 1, bytes_freed = 0, last_read = bytes_read;
+    while (bytes_read < bytes_to_process || !heap.empty()) { // I have to process all the bytes in the file
         std::string output_filename = output_filename_prefix + std::to_string(run);
         while (!heap.empty()) { // A run is complete when the heap is empty
             Record record = heap.top();
@@ -209,27 +168,27 @@ static void genSequenceFiles(
         std::cout << "Unsorted: " << unsorted.size() << std::endl;
         run++;
     }
-    std::cout << "Files generated in " << run << " runs!" << std::endl;
+    std::cout << "Files generated in " << run - 1 << " runs!" << std::endl;
 }
 
 
 // static void genSequenceFiles(
 //     const std::string& input_filename,
-//     size_t offset,
-//     size_t bytes_to_process,
-//     size_t max_size,
+//     ssize_t offset,
+//     ssize_t bytes_to_process,
+//     ssize_t max_size,
 //     const std::string& output_filename
 // ) {
 //     std::cout << "Bytes to process: " << bytes_to_process << std::endl;
-//     size_t running_size = (max_size * 4) / 5; // Memory for heap and buffers
+//     ssize_t running_size = (max_size * 4) / 5; // Memory for heap and buffers
 //     std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
 //     std::vector<Record> unsorted; // Records that belong to next run
 //     std::vector<Record> buffer;   // Buffer for reading new records
 
 //     // Initial load of records into heap
-//     size_t bytes_read = readRecordsFromFile(input_filename, heap, offset, running_size);
-//     size_t total_bytes_read = bytes_read;
-//     size_t run = 1;
+//     ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, running_size);
+//     ssize_t total_bytes_read = bytes_read;
+//     ssize_t run = 1;
 
 //     while (!heap.empty() || !unsorted.empty()) {
 //         // Start a new run
@@ -243,13 +202,13 @@ static void genSequenceFiles(
 //             heap.pop();
 
 //             // Write record to current run file
-//             size_t bytes_written = appendRecordToFile(current_output, record);
+//             ssize_t bytes_written = appendRecordToFile(current_output, record);
 //             last_output_record = record;
 //             first_record = false;
 
 //             // Try to read more records if there's space and more data available
 //             if (total_bytes_read < bytes_to_process) {
-//                 size_t new_bytes = readRecordsFromFile(input_filename, buffer, offset + total_bytes_read,
+//                 ssize_t new_bytes = readRecordsFromFile(input_filename, buffer, offset + total_bytes_read,
 //                                                      bytes_written);
 //                 total_bytes_read += new_bytes;
 
