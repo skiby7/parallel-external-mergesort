@@ -70,10 +70,10 @@ static std::string mergeFiles(const std::string& file1, const std::string& file2
     // ssize_t bytes_freed = 0;
     // ssize_t last_read = 0;
 
-    int fp = open(output_filename.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666);
+    int fp = open(output_filename.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_DIRECT, 0666);
     if (fp < 0) {
         if (errno == EEXIST)
-            fp = open(output_filename.c_str(), O_WRONLY | O_APPEND);
+            fp = open(output_filename.c_str(), O_WRONLY | O_APPEND | O_DIRECT);
         else {
             std::cerr << "Error opening file for writing: " << output_filename << " " << strerror(errno) << std::endl;
             exit(-1);
@@ -137,15 +137,15 @@ static void genSequenceFiles(
     std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
     std::vector<Record> buffer;
     // Skip the unsorted initialization and push the records directly to the heap
-    ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, usable_mem);
-    ssize_t run = 1, bytes_freed = 0, last_read = bytes_read;
+    ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, std::min(usable_mem, bytes_to_process));
+    ssize_t run = 1, bytes_freed = 0, last_read = bytes_read, bytes_remaining = bytes_to_process - bytes_read;
     while (bytes_read < bytes_to_process || !heap.empty()) { // I have to process all the bytes in the file
         std::string output_filename = output_filename_prefix + std::to_string(run);
         while (!heap.empty()) { // A run is complete when the heap is empty
             Record record = heap.top();
             heap.pop();
             bytes_freed += appendRecordToFile(output_filename, record);
-            last_read = readRecordsFromFile(input_filename, buffer, offset + bytes_read, bytes_freed);
+            last_read = readRecordsFromFile(input_filename, buffer, offset + bytes_read, std::min(bytes_remaining, bytes_freed));
             // If I manage to read something I have to reset the bytes_written counter
             if (last_read) bytes_freed -= last_read;
 
@@ -159,82 +159,18 @@ static void genSequenceFiles(
         for(auto& r : unsorted)
             heap.push(std::move(r));
         unsorted.clear();
-        // if (heap.empty() && bytes_read < bytes_to_process && bytes_freed)
-        //     bytes_read += readRecordsFromFile(input_filename, heap, offset + bytes_read, bytes_freed);
+        if (heap.empty() && bytes_read < bytes_to_process && bytes_freed)
+            bytes_read += readRecordsFromFile(input_filename, heap, offset + bytes_read, std::min(bytes_remaining, bytes_freed));
+        bytes_remaining = bytes_to_process - bytes_read;
         std::cout << "Bytes read: " << bytes_read << std::endl;
         std::cout << "Bytes freed: " << bytes_freed << std::endl;
-        std::cout << "Bytes remaining: " << bytes_to_process - bytes_read << std::endl;
+        std::cout << "Bytes remaining: " << bytes_remaining << std::endl;
         std::cout << "Heap: " << heap.size() << std::endl;
         std::cout << "Unsorted: " << unsorted.size() << std::endl;
         run++;
     }
     std::cout << "Files generated in " << run - 1 << " runs!" << std::endl;
 }
-
-
-// static void genSequenceFiles(
-//     const std::string& input_filename,
-//     ssize_t offset,
-//     ssize_t bytes_to_process,
-//     ssize_t max_size,
-//     const std::string& output_filename
-// ) {
-//     std::cout << "Bytes to process: " << bytes_to_process << std::endl;
-//     ssize_t running_size = (max_size * 4) / 5; // Memory for heap and buffers
-//     std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
-//     std::vector<Record> unsorted; // Records that belong to next run
-//     std::vector<Record> buffer;   // Buffer for reading new records
-
-//     // Initial load of records into heap
-//     ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, running_size);
-//     ssize_t total_bytes_read = bytes_read;
-//     ssize_t run = 1;
-
-//     while (!heap.empty() || !unsorted.empty()) {
-//         // Start a new run
-//         std::string current_output = output_filename + std::to_string(run);
-//         Record last_output_record; // Track last record written to maintain order
-//         bool first_record = true;
-
-//         // Process current run
-//         while (!heap.empty()) {
-//             Record record = heap.top();
-//             heap.pop();
-
-//             // Write record to current run file
-//             ssize_t bytes_written = appendRecordToFile(current_output, record);
-//             last_output_record = record;
-//             first_record = false;
-
-//             // Try to read more records if there's space and more data available
-//             if (total_bytes_read < bytes_to_process) {
-//                 ssize_t new_bytes = readRecordsFromFile(input_filename, buffer, offset + total_bytes_read,
-//                                                      bytes_written);
-//                 total_bytes_read += new_bytes;
-
-//                 // Classify new records: can go in current run or must wait for next run
-//                 for (auto& r : buffer) {
-//                     if (first_record || r >= last_output_record) {
-//                         heap.push(std::move(r)); // Can be in current run
-//                     } else {
-//                         unsorted.push_back(std::move(r)); // Must wait for next run
-//                     }
-//                 }
-//                 buffer.clear();
-//             }
-//         }
-
-//         // Move unsorted records to heap for next run
-//         for (auto& r : unsorted) {
-//             heap.push(std::move(r));
-//         }
-//         unsorted.clear();
-
-//         run++;
-//     }
-
-//     std::cout << "Files generated in " << (run - 1) << " runs!" << std::endl;
-// }
 
 static std::vector<std::string> findFiles(const std::string& prefix_path) {
 

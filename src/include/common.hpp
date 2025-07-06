@@ -131,10 +131,10 @@ static ssize_t writeRecordsToFile(const std::string& filename, std::vector<Recor
 
 
 static ssize_t appendRecordToFile(const std::string& filename, Record record) {
-    int fp = open(filename.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0666);
+    int fp = open(filename.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_DIRECT, 0666);
     if (fp < 0) {
         if (errno == EEXIST)
-            fp = open(filename.c_str(), O_WRONLY | O_APPEND);
+            fp = open(filename.c_str(), O_WRONLY | O_APPEND | O_DIRECT);
         else {
             std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
             exit(-1);

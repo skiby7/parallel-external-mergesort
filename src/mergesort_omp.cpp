@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <cstdint>
 #include <iterator>
 #include <utility>
 #include <vector>
@@ -13,14 +14,58 @@
 
 
 
+
 std::vector<std::pair<size_t, size_t>> computeChunks(const std::string& filename) {
     std::vector<std::pair<size_t, size_t>> chunks;
-    size_t chunk_size = getFileSize(filename) / omp_get_max_threads();
-    for (size_t i = 0; i < omp_get_max_threads(); ++i) {
-        chunks.push_back({i * chunk_size, (i + 1) * chunk_size});
+    // Each thread should have a chunk of data to sort
+    size_t num_threads = omp_get_max_threads();
+    size_t chunk_size = getFileSize(filename) / num_threads;
+    int fp = open(filename.c_str(), O_RDONLY);
+    if (fp < 0) {
+        std::cerr << "Error opening file for reading: " << filename << " " << strerror(errno) << std::endl;
+        exit(-1);
+    }
+    size_t start = 0, read_size = 0;
+    size_t current_pos = 0;
+    unsigned long key;
+    uint32_t len;
+    while(true) {
+
+        read_size = read(fp, &key, sizeof(key));
+        if (read_size == 0) break; // EOF
+        if (read_size < 0) {
+            std::cerr << "Error reading key: " << strerror(errno) << std::endl;
+            close(fp);
+            exit(-1);
+        }
+
+        // Read length
+        read_size = read(fp, &len, sizeof(len));
+        if (read_size < 0) {
+            std::cerr << "Error reading length: " << strerror(errno) << std::endl;
+            close(fp);
+            exit(-1);
+        }
+
+        // Skip payload
+        if (lseek(fp, len, SEEK_CUR) == -1) {
+            std::cerr << "Error seeking past payload: " << strerror(errno) << std::endl;
+            close(fp);
+            exit(-1);
+        }
+
+        // Get current position
+        current_pos = lseek(fp, 0, SEEK_CUR);
+
+        // Check if we've exceeded target chunk size
+        if (current_pos - start >= chunk_size && chunks.size() < num_threads - 1) {
+            chunks.push_back({start, current_pos-1});
+            start = current_pos;
+        }
     }
     return chunks;
 }
+
 int main(int argc, char *argv[]) {
     int start = 0;
     if((start = parseCommandLine(argc, argv)) < 0) return -1;
@@ -28,8 +73,13 @@ int main(int argc, char *argv[]) {
 
     assert(!checkSortedFile(filename));
     TIMERSTART(mergesort_seq)
-    genSequenceFiles(filename, 0, getFileSize(filename), MAX_MEMORY, "/tmp/run");
-    genSequenceFiles(filename, 0, getFileSize(filename), MAX_MEMORY, "/tmp/run");
+    std::vector<std::pair<size_t, size_t>> chunks = computeChunks(filename);
+    for(auto& chunk : chunks)
+        std::cout << chunk.first << " " << chunk.second << " size: " << chunk.second - chunk.first << std::endl;
+    // return 0;
+    #pragma omp parallel for
+    for (size_t i = 0; i < chunks.size(); i++)
+        genSequenceFiles(filename, chunks[i].first, chunks[i].second-chunks[i].first, MAX_MEMORY/omp_get_max_threads(), "/tmp/run");
     std::vector<std::string> sequences = findFiles("/tmp/run");
     std::vector<std::vector<std::string>> next_level;
     next_level.push_back({});
