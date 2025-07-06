@@ -1,3 +1,6 @@
+#include <cstddef>
+#include <iterator>
+#include <utility>
 #include <vector>
 #include <cstdio>
 #include <omp.h>
@@ -10,6 +13,14 @@
 
 
 
+std::vector<std::pair<size_t, size_t>> computeChunks(const std::string& filename) {
+    std::vector<std::pair<size_t, size_t>> chunks;
+    size_t chunk_size = getFileSize(filename) / omp_get_max_threads();
+    for (size_t i = 0; i < omp_get_max_threads(); ++i) {
+        chunks.push_back({i * chunk_size, (i + 1) * chunk_size});
+    }
+    return chunks;
+}
 int main(int argc, char *argv[]) {
     int start = 0;
     if((start = parseCommandLine(argc, argv)) < 0) return -1;
@@ -17,6 +28,7 @@ int main(int argc, char *argv[]) {
 
     assert(!checkSortedFile(filename));
     TIMERSTART(mergesort_seq)
+    genSequenceFiles(filename, 0, getFileSize(filename), MAX_MEMORY, "/tmp/run");
     genSequenceFiles(filename, 0, getFileSize(filename), MAX_MEMORY, "/tmp/run");
     std::vector<std::string> sequences = findFiles("/tmp/run");
     std::vector<std::vector<std::string>> next_level;
