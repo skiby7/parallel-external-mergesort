@@ -100,7 +100,6 @@ int main(int argc, char *argv[]) {
     // }
     // std::cout << "Processed " << total_size << " bytes" << std::endl;
     genSequenceFiles(filename, 0, getFileSize(filename), MAX_MEMORY, "/tmp/run");
-    std::cout << "File size: " << getFileSize(filename) << std::endl;
     // return 0;
     std::vector<std::string> sequences = findFiles("/tmp/run");
 
@@ -116,10 +115,13 @@ int main(int argc, char *argv[]) {
         next_level[0].push_back(sequences.back());
         sequences.pop_back();
     }
-    for (auto& filename : sequences) {
-        std::cout << filename << std::endl;
-        assert(checkSortedFile(filename));
+    size_t total_size = 0;
+    for (auto& file : sequences) {
+        total_size += getFileSize(file);
     }
+    std::cout << "Total size: " << total_size << std::endl;
+    std::cout << "File size: " << getFileSize(filename) << std::endl;
+    assert(total_size == getFileSize(filename));
     // #pragma omp parallel for
     for (size_t i = 0; i < sequences.size() - 1; i+=2) {
         std::string filename = "/tmp/merge#" + generateUUID();

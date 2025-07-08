@@ -179,8 +179,6 @@ static ssize_t readRecordsFromFile(const std::string& filename, Container& recor
         exit(-1);
     }
 
-    // Setting the cursor to the offset
-    lseek(fp, offset, SEEK_SET);
     ssize_t bytes_read = 0;
     ssize_t read_size = 0;
     ssize_t loop_count = 0;
@@ -188,7 +186,9 @@ static ssize_t readRecordsFromFile(const std::string& filename, Container& recor
     uint32_t len = 0;
     ssize_t current_size = RECORD_SIZE;
     char* buffer = new char[current_size];
-    // Reading as much bytes as possible
+    // Setting the cursor to the offset and then
+    // reading as much bytes as possible
+    lseek(fp, offset, SEEK_SET);
 
     while (true) {
         read_size = read(fp, &key, sizeof(key));
@@ -198,8 +198,7 @@ static ssize_t readRecordsFromFile(const std::string& filename, Container& recor
         if (bytes_read + loop_count > max_mem) break;
 
         read_size = read(fp, &len, sizeof(len));
-        if (read_size == 0) break;
-        else if (read_size < 0) exit(-1);
+        if (read_size < 0) exit(-1);
         else loop_count += read_size;
         if (bytes_read + loop_count + len > max_mem) break;
 
