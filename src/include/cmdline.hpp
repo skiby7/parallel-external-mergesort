@@ -16,7 +16,7 @@ static inline void usage(const char *argv0) {
     std::printf("\nOptions:\n");
     std::printf(" -s N: number array size (default s=%d)\n", ARRAY_SIZE);
     std::printf(" -r R: record payload size in bytes (default r=%d)\n", RECORD_SIZE);
-    std::printf(" -t T: number of ff threads (default=%d)\n", NTHREADS);
+    std::printf(" -t T: number of threads (default=%d)\n", NTHREADS);
     std::printf(" -d D: change feistel rounds to change the Record->key value (default=%d)\n", ROUNDS);
     std::printf(" -x X: set the threshold under which the arrays are sorted using std::sort (default=%d)\n", SORT_THRESHOLD);
     std::printf(" -m M: set the max memory usage (default=%ld)\n", MAX_MEMORY);

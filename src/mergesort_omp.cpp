@@ -20,6 +20,7 @@
 int main(int argc, char *argv[]) {
     int start = 0;
     if((start = parseCommandLine(argc, argv)) < 0) return -1;
+    omp_set_num_threads(NTHREADS);
     std::string filename = argv[start];
 
     assert(!checkSortedFile(filename));

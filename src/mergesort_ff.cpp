@@ -1,5 +1,4 @@
 #include <vector>
-#include <sstream>
 #include "include/cmdline.hpp"
 #include "include/common.hpp"
 #include "include/hpc_helpers.hpp"
