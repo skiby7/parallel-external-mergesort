@@ -69,18 +69,16 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
     std::deque<Record> buffer2;
     std::deque<Record> output_buffer;
 
-    ssize_t bytes_to_process1 = getFileSize(file1);
-    ssize_t bytes_to_process2 = getFileSize(file2);
+    size_t bytes_to_process1 = getFileSize(file1);
+    size_t bytes_to_process2 = getFileSize(file2);
     size_t usable_mem = max_mem / 4;
 
-    ssize_t bytes_read1 = 0;
-    ssize_t bytes_read2 = 0;
+    size_t bytes_read1 = 0;
+    size_t bytes_read2 = 0;
     size_t out_buf_size = 0;
     size_t bytes_written = 0;
+    // size_t i = 0, j = 0; // Cursors for buffer1 and buffer2
 
-    // Track current positions in buffers
-
-    // Flags to track if files are exhausted
     bool use_b1 = false;
 
     int fp = open(output_filename.c_str(), O_WRONLY | O_CREAT | O_DIRECT, 0666);
@@ -100,31 +98,32 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
     bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
     bytes_read2 += readRecordsFromFile(file2, buffer2, bytes_read2, usable_mem);
 
-    while (bytes_read1 < bytes_to_process1 && bytes_read2 < bytes_to_process2) {
+    while (!buffer1.empty() || !buffer2.empty() ||
+               bytes_read1 < bytes_to_process1 || bytes_read2 < bytes_to_process2) {
         // Refill buffer1 if needed and possible
         if (buffer1.empty() && bytes_read1 < bytes_to_process1)
-            bytes_read1 = readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
+            bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
 
 
 
         if (buffer2.empty() && bytes_read2 < bytes_to_process2)
-            bytes_read2 = readRecordsFromFile(file2, buffer2, bytes_read2, usable_mem);
+            bytes_read2 += readRecordsFromFile(file2, buffer2, bytes_read2, usable_mem);
 
 
 
-        if (buffer1.empty())  use_b1 = false;
-        else if (buffer2.empty())  use_b1 = true;
+        if (buffer1.empty()) use_b1 = false;
+        else if (buffer2.empty()) use_b1 = true;
         else use_b1 = (buffer1.front() <= buffer2.front());
 
 
         if (use_b1) {
             Record r = buffer1.front();
-            out_buf_size = sizeof(r.key) + sizeof(r.len) + r.len;
+            out_buf_size += sizeof(r.key) + sizeof(r.len) + r.len;
             output_buffer.push_back(std::move(buffer1.front()));
             buffer1.pop_front();
         } else {
             Record r = buffer2.front();
-            out_buf_size = sizeof(r.key) + sizeof(r.len) + r.len;
+            out_buf_size += sizeof(r.key) + sizeof(r.len) + r.len;
             output_buffer.push_back(std::move(buffer2.front()));
             buffer2.pop_front();
         }
@@ -136,15 +135,14 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
         }
     }
 
-    if (!output_buffer.empty()) {
+    if (!output_buffer.empty())
         bytes_written += appendRecordsToFile(output_filename, output_buffer);
-    }
+
 
     deleteFile(file1.c_str());
     deleteFile(file2.c_str());
     std::cout << "\nWritten " << bytes_written << " bytes." << std::endl;
     close(fp);
-
 }
 
 // static void mergeFiles(const std::string& file1, const std::string& file2,  const std::string& output_filename, const ssize_t max_mem) {
@@ -200,6 +198,11 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
 // }
 
 
+/**
+ * After some tests we know that this function generates the sequences
+ * as expected, even though the sum of the run files sizes are not equal to
+ * the original file. This is not a problem, we just have to keep it in mind.
+ */
 static void genSequenceFiles(
     const std::string& input_filename,
     ssize_t offset,

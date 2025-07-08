@@ -33,22 +33,25 @@ int main() {
     }
     // readRecordsFromFile("/tmp/output.dat", r2, 0, MAX_MEMORY);
     // std::cout << r1.size() << " " << r2.size() << std::endl;
-    // printRunFiles("/tmp/file1.dat");
+    printRunFiles("/tmp/file1.dat");
+    return 0;
     while (!r1.empty()) {
         appendRecordToFile("/tmp/test", r1.top());
         r1.pop();
     }
 
-    std::vector<std::string> sequences = findFiles("/tmp/run");
+    // std::vector<std::string> sequences = findFiles("/tmp/run");
 
-    for (int i = sequences.size() - 1; i >= 0; i--) {
-        readRecordsFromFile(sequences[i], r1, 0, MAX_MEMORY);
-    }
-    while (!r1.empty()) {
-        appendRecordToFile("/tmp/test1", r1.top());
-        r1.pop();
-    }
-    checkSortedFile("/tmp/test");
-    checkSortedFile("/tmp/test1");
+    // for (int i = sequences.size() - 1; i >= 0; i--) {
+    //     readRecordsFromFile(sequences[i], r1, 0, MAX_MEMORY);
+    // }
+    // while (!r1.empty()) {
+    //     appendRecordToFile("/tmp/test1", r1.top());
+    //     r1.pop();
+    // }
+    // checkSortedFile("/tmp/test");
+    // checkSortedFile("/tmp/test1");
+    printRunFiles("/tmp/test");
+    // printRunFiles("/tmp/test1");
     return 0;
 }

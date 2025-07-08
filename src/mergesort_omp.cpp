@@ -119,9 +119,7 @@ int main(int argc, char *argv[]) {
     for (auto& file : sequences) {
         total_size += getFileSize(file);
     }
-    std::cout << "Total size: " << total_size << std::endl;
-    std::cout << "File size: " << getFileSize(filename) << std::endl;
-    assert(total_size == getFileSize(filename));
+
     // #pragma omp parallel for
     for (size_t i = 0; i < sequences.size() - 1; i+=2) {
         std::string filename = "/tmp/merge#" + generateUUID();
@@ -130,13 +128,7 @@ int main(int argc, char *argv[]) {
         #pragma omp critical
         next_level[0].push_back(filename);
     }
-    // for (auto& filename : next_level[0]) {
-    //         std::cout << filename << std::endl;
-    //         assert(checkSortedFile(filename));
-    //     }
 
-    // for (auto& filename : next_level[0])
-    //     std::cout << filename << std::endl;
     size_t current_level = 1;
     while (next_level.back().size() > 1) {
         next_level.push_back({});
@@ -159,7 +151,5 @@ int main(int argc, char *argv[]) {
     std::cout << "Output file size: " << getFileSize("/tmp/output.dat") << std::endl;
     TIMERSTOP(mergesort_seq)
     assert(checkSortedFile("/tmp/output.dat"));
-    // destroyArray(records);
     return 0;
-
 }
