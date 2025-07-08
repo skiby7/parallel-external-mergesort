@@ -7,32 +7,28 @@
 #include <ff/ff.hpp>
 
 int main(int argc, char *argv[]) {
-    if(parseCommandLine(argc, argv) < 0) {
-        return -1;
-    }
-    
-    std::vector<Record> records;
-    generateArray(records);
-    
+    int start = 0;
+    if((start = parseCommandLine(argc, argv)) < 0) return -1;
+    std::string filename = argv[start];
+
     ff::ff_farm farm;
-    Master m(records);  
-    farm.add_emitter(&m); 
-    
+    Master m(filename);
+    farm.add_emitter(&m);
+
     std::vector<ff::ff_node*> W;
     for (size_t i = 0; i < NTHREADS; i++)
-        W.push_back(new WorkerNode(records));  
+        W.push_back(new WorkerNode());
 
     farm.add_workers(W);
     farm.wrap_around();
     farm.cleanup_workers();
-    
-    TIMERSTART(mergesort_ff);    
+
+    TIMERSTART(mergesort_ff);
     if (farm.run_and_wait_end() < 0) {
         std::cout << "Error running the farm" << std::endl;
     }
-    TIMERSTOP(mergesort_ff);    
-    
-    assert(checkSorted(records));
-    destroyArray(records);
+    TIMERSTOP(mergesort_ff);
+
+    assert(checkSortedFile("/tmp/output.dat"));
     return 0;
 }

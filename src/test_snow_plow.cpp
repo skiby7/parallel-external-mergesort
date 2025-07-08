@@ -22,23 +22,23 @@ int main() {
     // printRunFiles("/tmp/run13");
     // std::vector<Record> r1;
 
-    std::priority_queue<Record, std::vector<Record>, RecordComparator> r1;
-    // std::vector<Record> r2;
-    size_t counter = 0;
-    size_t bytes_read = readRecordsFromFile("/tmp/file1.dat", r1, 0, 10000);
-    counter += bytes_read;
-    while (bytes_read > 0) {
-        bytes_read = readRecordsFromFile("/tmp/file1.dat", r1, counter, 10000);
-        counter += bytes_read;
-    }
-    // readRecordsFromFile("/tmp/output.dat", r2, 0, MAX_MEMORY);
-    // std::cout << r1.size() << " " << r2.size() << std::endl;
-    printRunFiles("/tmp/file1.dat");
-    return 0;
-    while (!r1.empty()) {
-        appendRecordToFile("/tmp/test", r1.top());
-        r1.pop();
-    }
+    // std::priority_queue<Record, std::vector<Record>, RecordComparator> r1;
+    // // std::vector<Record> r2;
+    // size_t counter = 0;
+    // size_t bytes_read = readRecordsFromFile("/tmp/output.dat", r1, 0, 10000);
+    // counter += bytes_read;
+    // while (bytes_read > 0) {
+    //     bytes_read = readRecordsFromFile("/tmp/output.dat", r1, counter, 10000);
+    //     counter += bytes_read;
+    // }
+    // // readRecordsFromFile("/tmp/output.dat", r2, 0, MAX_MEMORY);
+    // // std::cout << r1.size() << " " << r2.size() << std::endl;
+    // printRunFiles("/tmp/file1.dat");
+    // return 0;
+    // while (!r1.empty()) {
+    //     appendRecordToFile("/tmp/test", r1.top());
+    //     r1.pop();
+    // }
 
     // std::vector<std::string> sequences = findFiles("/tmp/run");
 
@@ -51,7 +51,7 @@ int main() {
     // }
     // checkSortedFile("/tmp/test");
     // checkSortedFile("/tmp/test1");
-    printRunFiles("/tmp/test");
+    printRunFiles("/tmp/output.dat");
     // printRunFiles("/tmp/test1");
     return 0;
 }

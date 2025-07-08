@@ -3,15 +3,12 @@
 
 #include <cerrno>
 #include <cstddef>
-#include <deque>
 #include <iostream>
 #include <cstdint>
 #include <cstdlib>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <vector>
-#include <fstream>
-#include <algorithm>
 #include <string>
 #include <cstring>
 #include <fcntl.h>
@@ -19,214 +16,19 @@
 #include <unistd.h>
 #include "config.hpp"
 #include "feistel.hpp"
-
-typedef struct _Record {
-    unsigned long key;
-    uint32_t len;
-    char *rpayload;
-
-    _Record() : key(0), len(0), rpayload(nullptr) {}
-
-    _Record(unsigned long _key, uint32_t _len, char *payload) {
-        key = _key;
-        len = _len;
-        rpayload = new char[len];
-        memmove(rpayload, payload, len);
-    }
+#include "record.hpp"
+#include "filesystem.hpp"
+#include <uuid/uuid.h>
 
 
-    _Record(const _Record& other) {
-        key = other.key;
-        len = other.len;
-        rpayload = new char[len];
-        memmove(rpayload, other.rpayload, len);
-    }
-
-
-    _Record(_Record&& other) noexcept {
-        key = other.key;
-        len = other.len;
-        rpayload = other.rpayload;
-
-
-        other.rpayload = nullptr;
-        other.len = 0;
-        other.key = 0;
-    }
-
-
-    _Record& operator=(const _Record& other) {
-        if (this != &other) {
-            delete[] rpayload;
-            key = other.key;
-            len = other.len;
-            rpayload = new char[len];
-            memmove(rpayload, other.rpayload, len);
-        }
-        return *this;
-    }
-
-
-    _Record& operator=(_Record&& other) noexcept {
-        if (this != &other) {
-            delete[] rpayload;
-
-            key = other.key;
-            len = other.len;
-            rpayload = other.rpayload;
-
-
-            other.rpayload = nullptr;
-            other.len = 0;
-            other.key = 0;
-        }
-        return *this;
-    }
-
-    ~_Record() {
-        delete[] rpayload;
-    }
-
-    bool operator < (const _Record &a) const {
-        return key < a.key;
-    }
-
-    bool operator <= (const _Record &a) const {
-        return key <= a.key;
-    }
-
-    bool operator == (const _Record &a) const {
-        return key == a.key;
-    }
-
-    bool operator >= (const _Record &a) const {
-        return key >= a.key;
-    }
-
-    bool operator > (const _Record &a) const {
-        return key > a.key;
-    }
-} Record;
-
-
-
-static ssize_t writeRecordsToFile(const std::string& filename, std::vector<Record> records) {
-    int fp = open(filename.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0666);
-    if (fp < 0) {
-        if (errno == EEXIST)
-            fp = open(filename.c_str(), O_WRONLY);
-        else {
-            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
-            exit(-1);
-        }
-    }
-    ssize_t bytes_written = 0;
-    for (auto record: records) {
-        if ((bytes_written += write(fp, &record.key, sizeof(record.key))) < 0) exit(-1);
-        if ((bytes_written += write(fp, &record.len, sizeof(record.len))) < 0) exit(-1);
-        if ((bytes_written += write(fp, record.rpayload, record.len)) < 0) exit(-1);
-    }
-    close(fp);
-    return bytes_written;
+static std::string generateUUID() {
+    uuid_t uuid;
+    uuid_generate(uuid);
+    char uuid_str[37];
+    uuid_unparse(uuid, uuid_str);
+    return std::string(uuid_str);
 }
 
-
-static ssize_t appendRecordToFile(const std::string& filename, Record record) {
-    int fp = open(filename.c_str(), O_WRONLY | O_CREAT | O_APPEND | O_DIRECT, 0666);
-    if (fp < 0) {
-        if (errno == EEXIST)
-            fp = open(filename.c_str(), O_WRONLY | O_APPEND | O_DIRECT);
-        else {
-            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
-            exit(-1);
-        }
-    }
-    ssize_t bytes_written = 0;
-    if ((bytes_written = write(fp, &record.key, sizeof(record.key))) < 0) exit(-1);
-    if ((bytes_written += write(fp, &record.len, sizeof(record.len))) < 0) exit(-1);
-    if ((bytes_written += write(fp, record.rpayload, record.len)) < 0) exit(-1);
-    close(fp);
-    return bytes_written;
-}
-
-template<typename Container>
-static ssize_t appendRecordsToFile(const std::string& filename, Container records) {
-    int fp = open(filename.c_str(), O_WRONLY | O_APPEND | O_CREAT | O_DIRECT, 0666);
-    if (fp < 0) {
-        if (errno == EEXIST)
-            fp = open(filename.c_str(), O_WRONLY | O_APPEND | O_DIRECT);
-        else {
-            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
-            exit(-1);
-        }
-    }
-    ssize_t bytes_written = 0;
-    for (auto record: records) {
-        if ((bytes_written += write(fp, &record.key, sizeof(record.key))) < 0) exit(-1);
-        if ((bytes_written += write(fp, &record.len, sizeof(record.len))) < 0) exit(-1);
-        if ((bytes_written += write(fp, record.rpayload, record.len)) < 0) exit(-1);
-    }
-    close(fp);
-    return bytes_written;
-}
-
-
-template<typename Container>
-static ssize_t readRecordsFromFile(const std::string& filename, Container& records, ssize_t offset, ssize_t max_mem) {
-    int fp = open(filename.c_str(), O_RDONLY);
-    if (fp < 0) {
-        std::cerr << "Error opening file for reading: " << filename << " " << strerror(errno) << std::endl;
-        exit(-1);
-    }
-
-    ssize_t bytes_read = 0;
-    ssize_t read_size = 0;
-    ssize_t loop_count = 0;
-    unsigned long key = 0;
-    uint32_t len = 0;
-    ssize_t current_size = RECORD_SIZE;
-    char* buffer = new char[current_size];
-    // Setting the cursor to the offset and then
-    // reading as much bytes as possible
-    lseek(fp, offset, SEEK_SET);
-
-    while (true) {
-        read_size = read(fp, &key, sizeof(key));
-        if (read_size == 0) break;
-        else if (read_size < 0) exit(-1);
-        else  loop_count += read_size;
-        if (bytes_read + loop_count > max_mem) break;
-
-        read_size = read(fp, &len, sizeof(len));
-        if (read_size < 0) exit(-1);
-        else loop_count += read_size;
-        if (bytes_read + loop_count + len > max_mem) break;
-
-        if (len+1 > current_size) {
-            delete[] buffer;
-            current_size = len+1;
-            buffer = new char[current_size];
-        }
-        memset(buffer, 0, current_size);
-        read_size = read(fp, buffer, len);
-        if (read_size == 0) break;
-        else if (read_size < 0) exit(-1);
-        else loop_count += read_size;
-
-        bytes_read += loop_count;
-
-        if constexpr (std::is_same_v<Container, std::vector<Record>> || std::is_same_v<Container, std::deque<Record>>) {
-            records.push_back(Record{key, len, buffer});
-        } else {
-            records.push(Record{key, len, buffer});
-        }
-        loop_count = 0;
-    }
-
-    delete[] buffer;
-    close(fp);
-    return bytes_read;
-}
 
 
 static void generateFile(std::string filename) {
@@ -243,15 +45,6 @@ static void generateFile(std::string filename) {
     }
     writeRecordsToFile(filename, records);
     records.clear();
-}
-
-static size_t getFileSize(const std::string& filename) {
-    struct stat stat_buf;
-    if (stat(filename.c_str(), &stat_buf) != 0) {
-        std::cerr << "Error getting file stats: " << filename << std::endl;
-        return 0;
-    }
-    return stat_buf.st_size;
 }
 
 static std::vector<Record> generateArray(std::vector<Record>& records) {
@@ -287,32 +80,7 @@ static std::vector<Record> generateArray(std::vector<Record>& records) {
     return records;
 }
 
-static inline void destroyArray(std::vector<Record>& array) {
-    const size_t num_threads = std::thread::hardware_concurrency();
-    std::vector<std::thread> threads;
 
-    auto worker = [&](size_t start, size_t end) {
-        for (size_t i = start; i < end; ++i) {
-            delete[] array[i].rpayload;
-            array[i].rpayload = nullptr; // Optional: prevent dangling pointer
-        }
-    };
-
-    size_t total = array.size();
-    size_t chunk_size = total / num_threads;
-    size_t remainder = total % num_threads;
-    size_t start = 0;
-
-    for (size_t i = 0; i < num_threads; ++i) {
-        size_t end = start + chunk_size + (i < remainder ? 1 : 0);
-        threads.emplace_back(worker, start, end);
-        start = end;
-    }
-
-    for (auto& t : threads) {
-        t.join();
-    }
-}
 static bool deleteFile(const char* filename) {
     if (unlink(filename) == 0) {
         return true;
@@ -324,79 +92,19 @@ static bool deleteFile(const char* filename) {
 }
 
 
-template<typename Container>
-static inline bool checkSorted(Container array) {
+static inline bool checkSorted(std::vector<unsigned long>& array) {
     for (size_t i = 1; i < array.size(); i++)
         if (array[i] < array[i-1]) {
-            std::cerr << "Array is not sorted at index " << i << ": " << array[i].key << " < " << array[i-1].key << std::endl;
+            std::cout << "Array is not sorted at index " << i << ": " << array[i] << " < " << array[i-1] << std::endl;
             return false;
         }
     return true;
 }
 
 static bool checkSortedFile(const std::string& filename) {
-    std::vector<Record> records;
-    ssize_t bytes_read = readRecordsFromFile(filename, records, 0, MAX_MEMORY);
-    ssize_t last_read = bytes_read;
-    while (last_read > 0) {
-        if (!checkSorted(records)) {
-            return false;
-        }
-        last_read = readRecordsFromFile(filename, records, bytes_read, MAX_MEMORY);
-        bytes_read += last_read;
-    }
-    return true;
-}
-
-static inline void moveSorted(Record* records, ssize_t total_records, std::vector<Record>& sorted) {
-    sorted.resize(total_records);
-    const ssize_t BATCH_SIZE = 64;
-    const ssize_t UNROLL = 8;
-    ssize_t i = 0;
-
-    for (; i + BATCH_SIZE <= total_records; i += BATCH_SIZE) {
-        for (size_t j = 0; j < BATCH_SIZE; j += UNROLL) {
-            sorted[i + j + 0] = records[i + j + 0];
-            sorted[i + j + 1] = records[i + j + 1];
-            sorted[i + j + 2] = records[i + j + 2];
-            sorted[i + j + 3] = records[i + j + 3];
-            sorted[i + j + 4] = records[i + j + 4];
-            sorted[i + j + 5] = records[i + j + 5];
-            sorted[i + j + 6] = records[i + j + 6];
-            sorted[i + j + 7] = records[i + j + 7];
-        }
-    }
-
-    for (; i < total_records; ++i)
-        sorted[i] = records[i];
-}
-
-static inline void boundedMergeSort(std::vector<Record*> &arr, int left, int right) {
-    ssize_t size = right - left + 1;
-
-    if (size < SORT_THRESHOLD) {
-       std::sort(arr.begin() + left, arr.begin() + right + 1,
-                  [](const Record* a, const Record* b) {
-                      return a->key < b->key;
-                  });
-        return;
-    }
-
-    int mid = (left + right) / 2;
-    boundedMergeSort(arr, left, mid);
-    boundedMergeSort(arr, mid + 1, right);
-
-    std::vector<Record*> temp(size);
-    int i = left, j = mid + 1, k = 0;
-    while (i <= mid && j <= right) {
-        temp[k++] = (arr[i]->key <= arr[j]->key) ? arr[i++] : arr[j++];
-    }
-    while (i <= mid) temp[k++] = arr[i++];
-    while (j <= right) temp[k++] = arr[j++];
-
-    for (int l = 0; l < k; ++l) {
-        arr[left + l] = temp[l];
-    }
+    std::vector<unsigned long> records;
+    readKeysFromFile(filename, records);
+    return checkSorted(records);
 }
 
 

@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 #include "config.hpp"
+#include "filesystem.hpp"
 #include <algorithm>
 #include <cstring>
 #include <deque>
@@ -92,7 +93,7 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
         }
     }
 
-    std::cout << "Merging " << file1 << " and " << file2 << " into " << output_filename << std::endl;
+    // std::cout << "Merging " << file1 << " and " << file2 << " into " << output_filename << std::endl;
 
     // Initial buffer fills
     bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
@@ -129,73 +130,21 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
         }
 
         if (out_buf_size >= usable_mem) {
-            bytes_written += appendRecordsToFile(output_filename, output_buffer);
+            bytes_written += writeBatchToFile(fp, output_buffer);
             out_buf_size = 0;
             output_buffer.clear();
         }
     }
 
     if (!output_buffer.empty())
-        bytes_written += appendRecordsToFile(output_filename, output_buffer);
+        bytes_written += writeBatchToFile(fp, output_buffer);
 
 
     deleteFile(file1.c_str());
     deleteFile(file2.c_str());
-    std::cout << "\nWritten " << bytes_written << " bytes." << std::endl;
+    // std::cout << "\nWritten " << bytes_written << " bytes." << std::endl;
     close(fp);
 }
-
-// static void mergeFiles(const std::string& file1, const std::string& file2,  const std::string& output_filename, const ssize_t max_mem) {
-//     // Using deque to be able to use pop_front()
-//     std::deque<Record> buffer1;
-//     std::deque<Record> buffer2;
-//     std::deque<Record> output_buffer;
-
-//     size_t bytes_to_process1 = getFileSize(file1);
-//     size_t bytes_to_process2 = getFileSize(file2);
-//     // Using a fourth of the memory for each buffer so that the output_buffer can hold the merged records
-//     // Without having to allocate/deallocate memory in the loop
-//     ssize_t bytes_read1 = 0;
-//     ssize_t bytes_read2 = 0;
-//     size_t bytes_written = 0;
-
-//     int fp = open(output_filename.c_str(), O_WRONLY | O_CREAT | O_DIRECT, 0666);
-//     if (fp < 0) {
-//         if (errno == EEXIST)
-//             fp = open(output_filename.c_str(), O_WRONLY | O_DIRECT);
-//         else {
-//             std::cerr << "Error opening file for writing: " << output_filename << " " << strerror(errno) << std::endl;
-//             exit(-1);
-//         }
-//     }
-//     std::cout << "Merging " << file1 << " and " << file2 << " into " << output_filename << std::endl;
-
-
-//     // while (bytes_read1 < bytes_to_process1 || bytes_read2 < bytes_to_process2) {
-//     while (bytes_written != bytes_to_process1 + bytes_to_process2) {
-//         bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, max_mem/4);
-//         bytes_read2 += readRecordsFromFile(file2, buffer2, bytes_read2, max_mem/4);
-//         assert(std::is_sorted(buffer1.begin(), buffer1.end()));
-//         assert(std::is_sorted(buffer2.begin(), buffer2.end()));
-//         std::merge(std::make_move_iterator(buffer1.begin()),
-//                    std::make_move_iterator(buffer1.end()),
-//                    std::make_move_iterator(buffer2.begin()),
-//                    std::make_move_iterator(buffer2.end()),
-//                    std::back_inserter(output_buffer)
-//         );
-//         assert(checkSorted(output_buffer));
-//         buffer1.clear();
-//         buffer2.clear();
-//         bytes_written += appendRecordsToFile(output_filename, output_buffer);
-
-//         // bytes_written += writeBatchToFile(fp, output_buffer);
-//         output_buffer.clear();
-//     }
-//     deleteFile(file1.c_str());
-//     deleteFile(file2.c_str());
-//     std::cout << "Written " << bytes_written << " bytes." << std::endl;
-//     close(fp);
-// }
 
 
 /**
@@ -226,13 +175,13 @@ static void genSequenceFiles(
     while (bytes_remaining > 0 || !heap.empty() || !unsorted.empty()) { // I have to process all the bytes in the file
         std::string output_filename = output_filename_prefix + std::to_string(run);
         bytes_remaining = bytes_to_process - bytes_read;
-        std::cout << "##############################" << std::endl;
-        std::cout << "Bytes to process: " << bytes_to_process << std::endl;
-        std::cout << "Bytes read: " << bytes_read << std::endl;
-        std::cout << "Bytes remaining: " << bytes_remaining << std::endl;
-        std::cout << "Free bytes: " << free_bytes << std::endl;
-        std::cout << "Heap size: " << heap.size() << std::endl;
-        std::cout << "Current offset: " << curr_offset << std::endl;
+        // std::cout << "##############################" << std::endl;
+        // std::cout << "Bytes to process: " << bytes_to_process << std::endl;
+        // std::cout << "Bytes read: " << bytes_read << std::endl;
+        // std::cout << "Bytes remaining: " << bytes_remaining << std::endl;
+        // std::cout << "Free bytes: " << free_bytes << std::endl;
+        // std::cout << "Heap size: " << heap.size() << std::endl;
+        // std::cout << "Current offset: " << curr_offset << std::endl;
 
         while (!heap.empty()) { // A run is complete when the heap is empty
             Record record = heap.top();
@@ -251,6 +200,7 @@ static void genSequenceFiles(
                 free_bytes -= last_read;
                 bytes_read += last_read;
                 curr_offset += last_read;
+                bytes_remaining = bytes_to_process - bytes_read;
             }
             for (auto& r : buffer) {
                 if (r < record) unsorted.push_back(std::move(r));
@@ -263,29 +213,13 @@ static void genSequenceFiles(
             heap.push(std::move(r));
         // Now the heap is full again and we can clear the unsorted set
         unsorted.clear();
-        // If I didn't manage to read anything in the loop above, let's fill the heap again
-        // if (heap.empty() && bytes_remaining > 0) {
-        //     last_read += readRecordsFromFile(input_filename, heap, offset + bytes_read, std::min(bytes_remaining, free_bytes));
-        //     free_bytes -= last_read;
-        //     bytes_read += last_read;
-        // }
-        // Update the bytes_remaining counter
-        // #pragma omp critical
-        // {
-        //     std::cout << "Thread: " << omp_get_thread_num() << std::endl;
-        //     std::cout << "Offset: " << offset << std::endl;
-        //     std::cout << "Bytes to process: " << bytes_to_process << std::endl;
-        //     std::cout << "Bytes read: " << bytes_read << std::endl;
-        //     std::cout << "Bytes freed: " << free_bytes << std::endl;
-        //     std::cout << "Bytes remaining: " << bytes_remaining << std::endl;
-        //     std::cout << "Heap: " << heap.size() << std::endl;
-        //     std::cout << "Unsorted: " << unsorted.size() << std::endl;
-        // }
         run++;
     }
-    std::cout << "Total records read: " << total_records_read << std::endl;
-    std::cout << "Total records written: " << total_records_written << std::endl;
-    std::cout << "Files generated in " << run - 1 << " runs!" << std::endl;
+    // std::cout << "Bytes to process: " << bytes_to_process << std::endl;
+    // std::cout << "Bytes read: " << bytes_read << std::endl;
+    // std::cout << "Total records read: " << total_records_read << std::endl;
+    // std::cout << "Total records written: " << total_records_written << std::endl;
+    // std::cout << "Files generated in " << run - 1 << " runs!" << std::endl;
 
 }
 

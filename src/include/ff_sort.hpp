@@ -2,21 +2,28 @@
 #define _FF_SORT_HPP
 #include "common.hpp"
 #include "config.hpp"
+#include "filesystem.hpp"
+#include "sorting.hpp"
 #include <cmath>
+#include <cstddef>
 #include <ff/ff.hpp>
 #include <ff/pipeline.hpp>
-#include <chrono>
+#include <unistd.h>
+#include <vector>
 
 struct sort_task_t {
+    std::string filename;
     size_t start;
-    size_t end;
+    size_t size;
+    size_t memory;
     size_t w_id;
 };
 
 struct merge_task_t {
-    size_t start_a;  
-    size_t middle;
-    size_t end_b;    
+    std::string file1;
+    std::string file2;
+    std::string output;
+    size_t memory;
 };
 
 struct work_t {
@@ -26,125 +33,97 @@ struct work_t {
 
 
 struct Master : ff::ff_monode_t<work_t> {
-    Record* records;
-    const size_t total_records; 
-    size_t remainder; 
-    size_t chunk_size; 
+    std::vector<std::vector<std::string>> levels;
     size_t current_level;
-    size_t submitted_chunks_count;
+    size_t submitted_sort_tasks;
     size_t merge_count;
-    size_t n_chunks;
-    std::chrono::high_resolution_clock::time_point start;
-    std::chrono::high_resolution_clock::time_point end;
-    size_t active_threads;
-    std::vector<std::vector<std::pair<size_t, size_t>>> merge_levels;
-    Master(std::vector<Record>& records) : 
-        records(records.data()), total_records(records.size()),
-        current_level(0), submitted_chunks_count(0), merge_count(0),
-        n_chunks(NTHREADS), active_threads(NTHREADS) {
-        chunk_size = records.size()/n_chunks;
-        remainder = records.size()%n_chunks;
-    } 
-    
-    void kill_threads(size_t expected_merges) {
-        while (active_threads > expected_merges) 
-            ff_send_out_to(EOS, --active_threads);
-    }
+    size_t expected_merges;
+    size_t nthreads;
+    std::string filename;
+    Master(std::string filename) :
+        current_level(0), submitted_sort_tasks(0), merge_count(0),
+        nthreads(NTHREADS), filename(filename) {}
 
+    void kill_threads(size_t expected_merges) {
+        while (nthreads > expected_merges)
+            ff_send_out_to(EOS, --nthreads);
+    }
     void send_out_sort_tasks () {
-        size_t start_idx = 0;
-        for (size_t i = 0; i < n_chunks; i++) {
-            size_t current_chunk_size = chunk_size + (i < remainder ? 1 : 0);
-            size_t end_idx = std::min(start_idx + current_chunk_size, total_records);
-            
-            if (start_idx < total_records) {
-                ff_send_out(new work_t{new sort_task_t{start_idx, end_idx, i}, nullptr});
-                submitted_chunks_count++;
-            }
-            start_idx = end_idx;  
+        std::vector<std::pair<size_t, size_t>> chunks = computeChunks(filename, nthreads);
+        for (size_t i = 0; i < chunks.size(); i++) {
+            size_t size = chunks[i].second - chunks[i].first;
+            ff_send_out(new work_t{new sort_task_t{
+                filename,
+                chunks[i].first,
+                size,
+                MAX_MEMORY/nthreads,
+                i
+            }, nullptr});
+            submitted_sort_tasks++;
         }
     }
 
     work_t* svc(work_t* task) {
         if (!task) {
-            start = std::chrono::high_resolution_clock::now();
             send_out_sort_tasks();
             return GO_ON;
         } else if (task->sort_task) {
-            submitted_chunks_count--;
-
-            if (merge_levels.size() == 0)
-                merge_levels.push_back(std::vector<std::pair<size_t, size_t>>());
-            merge_levels[current_level].push_back({task->sort_task->start, task->sort_task->end});
+            submitted_sort_tasks--;
 
             // If all sorted chunks are collected, start merging
-            if (submitted_chunks_count == 0) {
+            if (submitted_sort_tasks == 0) {
+                std::vector<std::string> sequences = findFiles("/tmp/run");
 
-                end = std::chrono::high_resolution_clock::now();
-                auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
-                std::cout << "Sort duration: " << duration.count() << " ms" << std::endl;
-                // Sort the tasks to use inplece_merge to merge adjacent chunks and
-                // avoid allocating more memory
-                std::sort(merge_levels[current_level].begin(), merge_levels[current_level].end(),
-                      [](const auto& a, const auto& b) {
-                          return a.first < b.first;              
-                       });
-                current_level++;
-                merge_levels.push_back(std::vector<std::pair<size_t, size_t>>());
-                
-                for (size_t i = 0; i + 1 < merge_levels[current_level - 1].size(); i += 2) {
-                    auto& range_a = merge_levels[current_level - 1][i];
-                    auto& range_b = merge_levels[current_level - 1][i + 1];
-                                  
-                    ff_send_out_to(new work_t{nullptr, new merge_task_t{
-                        range_a.first, range_a.second, range_b.second}}, i);
+                levels.push_back({});
+                if (sequences.size() % 2) {
+                    levels[0].push_back(sequences.back());
+                    sequences.pop_back();
                 }
-                
-                // If odd, pass the last range to next level directly
-                if (merge_levels[current_level - 1].size() % 2) 
-                    merge_levels[current_level].push_back(merge_levels[current_level - 1].back());
-                 
-            }            
+
+                expected_merges = sequences.size() / 2;
+                // kill_threads(expected_merges);
+                for (size_t i = 0; i < sequences.size() - 1; i+=2) {
+                    std::string filename = "/tmp/merge#" + generateUUID();
+                    ff_send_out(new work_t{nullptr, new merge_task_t{
+                        sequences[i],
+                        sequences[i + 1],
+                        filename,
+                        MAX_MEMORY/nthreads}});
+                    levels[0].push_back(filename);
+                }
+            }
             delete task->sort_task;
             delete task;
             return GO_ON;
 
         } else if (task->merge_task) {
             merge_count++;
-            merge_levels[current_level].push_back({task->merge_task->start_a, task->merge_task->end_b});
-            size_t expected_merges = merge_levels[current_level - 1].size() / 2;
-            // If the expected merges are greater than the active threads
-            // we can free some resources
-            kill_threads(expected_merges);
             if (merge_count == expected_merges) {
-                if (merge_levels[current_level].size() == 1) 
+                if (levels[current_level].size() == 1) {
+                    rename(levels.back().back().c_str(), "/tmp/output.dat");
                     return EOS;
-                
-
-                // Start next merge level
-                // Sort the chunks to merge in place
-                std::sort(merge_levels[current_level].begin(), merge_levels[current_level].end(),
-                      [](const auto& a, const auto& b) {
-                          return a.first < b.first;              
-                       });
-
-                current_level++;
-                merge_levels.push_back(std::vector<std::pair<size_t, size_t>>());
-                merge_count = 0;
-                
-                for (size_t i = 0; i + 1 < merge_levels[current_level - 1].size(); i += 2) {
-                    auto& range_a = merge_levels[current_level - 1][i];
-                    auto& range_b = merge_levels[current_level - 1][i + 1];
-                    
-                    ff_send_out_to(new work_t{nullptr, new merge_task_t{
-                        range_a.first, range_a.second, 
-                        range_b.second}}, i);
                 }
 
-                if (merge_levels[current_level - 1].size() % 2) 
-                    merge_levels[current_level].push_back(merge_levels[current_level - 1].back());
-                
-            }           
+                current_level++;
+                levels.push_back({});
+                if (levels[current_level - 1].size() % 2) {
+                    levels[current_level].push_back(levels[current_level - 1].back());
+                    levels[current_level - 1].pop_back();
+                }
+
+                expected_merges = levels[current_level - 1].size() / 2;
+                // kill_threads(expected_merges);
+                for (size_t i = 0; i < levels[current_level - 1].size() - 1; i += 2) {
+                    std::string filename = "/tmp/merge#" + generateUUID();;
+                    ff_send_out(new work_t{nullptr, new merge_task_t{
+                        levels[current_level - 1][i],
+                        levels[current_level - 1][i + 1],
+                        filename,
+                        MAX_MEMORY/nthreads}});
+                    levels[current_level].push_back(filename);
+                }
+                merge_count = 0;
+            }
 
             delete task->merge_task;
             delete task;
@@ -154,32 +133,25 @@ struct Master : ff::ff_monode_t<work_t> {
     }
 };
 
-/**
- * [CHUNK_1 | CHUNK_2 | CHUNK_3 | CHUNK_4]
- * [CHUNK_1 | CHUNK_2 | CHUNK_3 | CHUNK_4]
- * [CHUNK_1 | CHUNK_2 | CHUNK_3 | CHUNK_4]
- * [CHUNK_1 | CHUNK_2 | CHUNK_3 | CHUNK_4]
- */
-
-
 
 struct WorkerNode : ff::ff_node_t<work_t> {
-    Record* records; 
-    WorkerNode(std::vector<Record>& records) : records(records.data()) {}
+    WorkerNode() {}
     work_t* svc(work_t* work) {
         if (work->sort_task) {
-            std::sort(records + work->sort_task->start,
-                      records + work->sort_task->end,
-                [](const Record& a, const Record& b) {
-                  return a.key < b.key;
-            });
+            genSequenceFiles(
+                work->sort_task->filename,
+                work->sort_task->start,
+                work->sort_task->size,
+                work->sort_task->memory,
+                "/tmp/run#" + generateUUID());
+
             ff_send_out(work);
         } else if (work->merge_task) {
-            auto start_a = records + work->merge_task->start_a;
-            auto middle = records + work->merge_task->middle;
-            auto end_b = records + work->merge_task->end_b;
-            std::inplace_merge(start_a, middle, end_b,
-                [](const Record& x, const Record& y) { return x.key <= y.key; });        
+            mergeFiles(
+                work->merge_task->file1,
+                work->merge_task->file2,
+                work->merge_task->output,
+                work->merge_task->memory);
             ff_send_out(work);
         }
         return GO_ON;
