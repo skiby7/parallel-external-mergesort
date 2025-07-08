@@ -3,6 +3,7 @@
 
 #include <cerrno>
 #include <cstddef>
+#include <deque>
 #include <iostream>
 #include <cstdint>
 #include <cstdlib>
@@ -148,11 +149,12 @@ static ssize_t appendRecordToFile(const std::string& filename, Record record) {
     return bytes_written;
 }
 
-static ssize_t appendRecordsToFile(const std::string& filename, std::vector<Record> records) {
-    int fp = open(filename.c_str(), O_WRONLY | O_APPEND | O_CREAT, 0666);
+template<typename Container>
+static ssize_t appendRecordsToFile(const std::string& filename, Container records) {
+    int fp = open(filename.c_str(), O_WRONLY | O_APPEND | O_CREAT | O_DIRECT, 0666);
     if (fp < 0) {
         if (errno == EEXIST)
-            fp = open(filename.c_str(), O_WRONLY | O_APPEND);
+            fp = open(filename.c_str(), O_WRONLY | O_APPEND | O_DIRECT);
         else {
             std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
             exit(-1);
@@ -199,7 +201,7 @@ static ssize_t readRecordsFromFile(const std::string& filename, Container& recor
         if (read_size == 0) break;
         else if (read_size < 0) exit(-1);
         else loop_count += read_size;
-        if (bytes_read + loop_count > max_mem) break;
+        if (bytes_read + loop_count + len > max_mem) break;
 
         if (len+1 > current_size) {
             delete[] buffer;
@@ -211,11 +213,10 @@ static ssize_t readRecordsFromFile(const std::string& filename, Container& recor
         if (read_size == 0) break;
         else if (read_size < 0) exit(-1);
         else loop_count += read_size;
-        if (bytes_read + loop_count > max_mem) break;
 
         bytes_read += loop_count;
 
-        if constexpr (std::is_same_v<Container, std::vector<Record>>) {
+        if constexpr (std::is_same_v<Container, std::vector<Record>> || std::is_same_v<Container, std::deque<Record>>) {
             records.push_back(Record{key, len, buffer});
         } else {
             records.push(Record{key, len, buffer});
@@ -245,7 +246,7 @@ static void generateFile(std::string filename) {
     records.clear();
 }
 
-static ssize_t getFileSize(const std::string& filename) {
+static size_t getFileSize(const std::string& filename) {
     struct stat stat_buf;
     if (stat(filename.c_str(), &stat_buf) != 0) {
         std::cerr << "Error getting file stats: " << filename << std::endl;
@@ -323,10 +324,12 @@ static bool deleteFile(const char* filename) {
     }
 }
 
-static inline bool checkSorted(std::vector<Record> array) {
+
+template<typename Container>
+static inline bool checkSorted(Container array) {
     for (size_t i = 1; i < array.size(); i++)
-        if (array[i].key < array[i-1].key) {
-            std::cerr << "Array is not sorted: " << array[i].key << " < " << array[i-1].key << std::endl;
+        if (array[i] < array[i-1]) {
+            std::cerr << "Array is not sorted at index " << i << ": " << array[i].key << " < " << array[i-1].key << std::endl;
             return false;
         }
     return true;

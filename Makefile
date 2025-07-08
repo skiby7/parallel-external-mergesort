@@ -2,7 +2,7 @@ CXX        = g++ -std=c++20
 INCLUDES   = -I src/include -I src/fastflow
 CXXFLAGS  += -Wall -Werror -pedantic -Wno-unused-function
 
-LDFLAGS    = -pthread -fopenmp
+LDFLAGS    = -pthread -fopenmp -luuid
 OPTFLAGS   = -O3 -ffast-math -march=native
 DOPTFLAGS  = -g -O0
 TARGETS    = mergesort_seq mergesort_omp mergesort_ff

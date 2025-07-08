@@ -19,7 +19,7 @@ int main() {
     // }
 
     // genSequenceFiles("/tmp/file.dat", 0, getFileSize("/tmp/file.dat"), 1 << 7, "/tmp/run");
-    // printRunFiles("/tmp/output.dat");
-    checkSortedFile("/tmp/output.dat");
+    printRunFiles("/tmp/run13");
+    // checkSortedFile("/tmp/output.dat");
     return 0;
 }
