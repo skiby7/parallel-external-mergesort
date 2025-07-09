@@ -93,7 +93,6 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
         }
     }
 
-    // std::cout << "Merging " << file1 << " and " << file2 << " into " << output_filename << std::endl;
 
     // Initial buffer fills
     bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
@@ -142,7 +141,6 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
 
     deleteFile(file1.c_str());
     deleteFile(file2.c_str());
-    // std::cout << "\nWritten " << bytes_written << " bytes." << std::endl;
     close(fp);
 }
 
@@ -175,14 +173,6 @@ static void genSequenceFiles(
     while (bytes_remaining > 0 || !heap.empty() || !unsorted.empty()) { // I have to process all the bytes in the file
         std::string output_filename = output_filename_prefix + std::to_string(run);
         bytes_remaining = bytes_to_process - bytes_read;
-        // std::cout << "##############################" << std::endl;
-        // std::cout << "Bytes to process: " << bytes_to_process << std::endl;
-        // std::cout << "Bytes read: " << bytes_read << std::endl;
-        // std::cout << "Bytes remaining: " << bytes_remaining << std::endl;
-        // std::cout << "Free bytes: " << free_bytes << std::endl;
-        // std::cout << "Heap size: " << heap.size() << std::endl;
-        // std::cout << "Current offset: " << curr_offset << std::endl;
-
         while (!heap.empty()) { // A run is complete when the heap is empty
             Record record = heap.top();
             heap.pop();
@@ -192,7 +182,6 @@ static void genSequenceFiles(
             total_records_written++;
             if (bytes_remaining > 0) {
                 // If there are bytes remained to process, read them into the buffer or at least read some bytes
-                // std::cout << "Trying to read from " << offset + bytes_read << " to " << offset + bytes_read + std::min(bytes_remaining, free_bytes) << std::endl;
                 last_read = readRecordsFromFile(input_filename, buffer, curr_offset, std::min(bytes_remaining, free_bytes));
                 total_records_read += buffer.size();
                 // If I manage to read something I have to update the free_bytes counter
@@ -215,19 +204,12 @@ static void genSequenceFiles(
         unsorted.clear();
         run++;
     }
-    // std::cout << "Bytes to process: " << bytes_to_process << std::endl;
-    // std::cout << "Bytes read: " << bytes_read << std::endl;
-    // std::cout << "Total records read: " << total_records_read << std::endl;
-    // std::cout << "Total records written: " << total_records_written << std::endl;
-    // std::cout << "Files generated in " << run - 1 << " runs!" << std::endl;
-
 }
 
 static std::vector<std::string> findFiles(const std::string& prefix_path) {
 
     std::vector<std::string> matching_files;
 
-    std::cout << "Extracting directory and filename prefix..." << std::endl;
 
     // Manual path parsing instead of std::filesystem
     std::string directory;
@@ -246,10 +228,6 @@ static std::vector<std::string> findFiles(const std::string& prefix_path) {
     if (directory.empty()) {
         directory = ".";
     }
-
-    std::cout << "Directory: " << directory << std::endl;
-    std::cout << "Filename prefix: " << filename_prefix << std::endl;
-
     // Check if directory exists and is accessible
     struct stat dir_stat;
     if (stat(directory.c_str(), &dir_stat) != 0) {
@@ -298,7 +276,6 @@ static std::vector<std::string> findFiles(const std::string& prefix_path) {
 
     closedir(dir);
 
-    std::cout << "Found " << matching_files.size() << " matching files" << std::endl;
     return matching_files;
 }
 

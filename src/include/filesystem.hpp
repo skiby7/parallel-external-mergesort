@@ -70,7 +70,6 @@ static std::vector<std::pair<size_t, size_t>> computeChunks(const std::string& f
             start = current_pos;
         }
     }
-    std::cout << "Divided file in " << chunks.size() << " chunks" << std::endl;
     close(fp);
     return chunks;
 }

@@ -95,7 +95,7 @@ static bool deleteFile(const char* filename) {
 static inline bool checkSorted(std::vector<unsigned long>& array) {
     for (size_t i = 1; i < array.size(); i++)
         if (array[i] < array[i-1]) {
-            std::cout << "Array is not sorted at index " << i << ": " << array[i] << " < " << array[i-1] << std::endl;
+            // std::cout << "Array is not sorted at index " << i << ": " << array[i] << " < " << array[i0] << std::endl;
             return false;
         }
     return true;

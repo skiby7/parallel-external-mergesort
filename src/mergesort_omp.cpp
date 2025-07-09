@@ -1,7 +1,4 @@
 #include <cstddef>
-#include <cstdint>
-#include <iostream>
-#include <iterator>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,11 +21,9 @@ int main(int argc, char *argv[]) {
     std::string filename = argv[start];
 
     assert(!checkSortedFile(filename));
+
     TIMERSTART(mergesort_omp)
     std::vector<std::pair<size_t, size_t>> chunks = computeChunks(filename, omp_get_max_threads());
-    for(auto& chunk : chunks)
-        std::cout << chunk.first << " " << chunk.second << " size: " << chunk.second - chunk.first << std::endl;
-    // size_t total_size = 0;
     #pragma omp parallel for
     for (size_t i = 0; i < chunks.size(); i++) {
         size_t size = chunks[i].second - chunks[i].first;
@@ -72,9 +67,8 @@ int main(int argc, char *argv[]) {
     }
 
     rename(levels.back().back().c_str(), "/tmp/output.dat");
-
-    std::cout << "Output file size: " << getFileSize("/tmp/output.dat") << std::endl;
     TIMERSTOP(mergesort_omp)
+
     assert(checkSortedFile("/tmp/output.dat"));
     return 0;
 }

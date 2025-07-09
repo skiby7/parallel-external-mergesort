@@ -14,11 +14,10 @@ static inline void usage(const char *argv0) {
     std::printf("--------------------\n");
     std::printf("Usage: %s [options]\n", argv0);
     std::printf("\nOptions:\n");
-    std::printf(" -s N: number array size (default s=%d)\n", ARRAY_SIZE);
-    std::printf(" -r R: record payload size in bytes (default r=%d)\n", RECORD_SIZE);
+    // std::printf(" -s N: number array size (default s=%d)\n", ARRAY_SIZE);
+    // std::printf(" -r R: record payload size in bytes (default r=%d)\n", RECORD_SIZE);
     std::printf(" -t T: number of threads (default=%d)\n", NTHREADS);
-    std::printf(" -d D: change feistel rounds to change the Record->key value (default=%d)\n", ROUNDS);
-    std::printf(" -x X: set the threshold under which the arrays are sorted using std::sort (default=%d)\n", SORT_THRESHOLD);
+    // std::printf(" -d D: change feistel rounds to change the Record->key value (default=%d)\n", ROUNDS);
     std::printf(" -m M: set the max memory usage (default=%ld)\n", MAX_MEMORY);
     std::printf("--------------------\n");
 }
@@ -38,7 +37,7 @@ static bool isNumber(const char* s, long &n) {
 
 static inline int parseCommandLine(int argc, char *argv[]) {
     extern char *optarg;
-    const std::string optstr = "r:s:t:d:x:m:";
+    const std::string optstr = "r:s:t:d:m:";
     long opt, start = 1;
 
     while ((opt = getopt(argc, argv, optstr.c_str())) != -1) {

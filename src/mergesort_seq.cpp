@@ -1,9 +1,6 @@
 #include <cstddef>
-#include <cstdint>
 #include <iostream>
-#include <iterator>
 #include <string>
-#include <utility>
 #include <vector>
 #include <cstdio>
 #include <cassert>
@@ -58,7 +55,6 @@ int main(int argc, char *argv[]) {
 
     rename(levels.back().back().c_str(), "/tmp/output.dat");
 
-    std::cout << "Output file size: " << getFileSize("/tmp/output.dat") << std::endl;
     TIMERSTOP(mergesort_seq)
     assert(checkSortedFile("/tmp/output.dat"));
     return 0;
