@@ -34,6 +34,7 @@ static std::string generateUUID() {
 static void generateFile(std::string filename) {
     Record record;
     std::vector<Record> records;
+    size_t size = 0;
     for (size_t i = 0; i < ARRAY_SIZE; i++) {
         record.key = feistel_encrypt((uint32_t)i, 0xDEADBEEF, ROUNDS);
         record.len = rand() % (RECORD_SIZE - 8) + 8;
@@ -41,9 +42,16 @@ static void generateFile(std::string filename) {
         for (size_t j = 0; j < record.len; j++) {
             record.rpayload[j] = feistel_encrypt(j+i, 0x01, 1) & 0xFF;
         }
+        size += sizeof(record) + record.len;
         records.push_back(record);
+        if (size > MAX_MEMORY) {
+            size = 0;
+            appendRecordsToFile(filename, records);
+            records.clear();
+        }
     }
-    writeRecordsToFile(filename, records);
+    if (!records.empty())
+        appendRecordsToFile(filename, records);
     records.clear();
 }
 
