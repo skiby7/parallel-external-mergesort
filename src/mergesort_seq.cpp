@@ -38,6 +38,8 @@ int main(int argc, char *argv[]) {
         levels[0].push_back(filename);
     }
 
+    // REPLACE THE MERGE WITH THE KWAYMERGESORT
+
     size_t current_level = 1;
     while (levels.back().size() > 1) {
         levels.push_back({});
