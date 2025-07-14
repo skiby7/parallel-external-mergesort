@@ -11,6 +11,8 @@
 #include <ff/ff.hpp>
 #include <ff/pipeline.hpp>
 #include <sys/mman.h>
+#include <unistd.h>  // for sysconf
+#include <cstdint>
 
 static size_t getFileSize(const std::string& filename) {
     struct stat stat_buf;
@@ -21,26 +23,43 @@ static size_t getFileSize(const std::string& filename) {
     return stat_buf.st_size;
 }
 
-static ssize_t writeBatchToFile(int fd, std::deque<Record>& records) {
-    // First pass: calculate total size
-    size_t total_size = 0;
-    for (const auto& record : records)
-        total_size += sizeof(record.key) + sizeof(record.len) + record.len;
 
-    // Extend file to the required size
-    if (ftruncate(fd, total_size) != 0) {
+static ssize_t writeBatchToFile(int fd, std::deque<Record>& records) {
+    // Get system page size
+    size_t page_size = sysconf(_SC_PAGE_SIZE);
+
+    // Get current file size
+    off_t current_size = lseek(fd, 0, SEEK_END);
+    if (current_size == -1) {
+        std::cerr << "lseek failed: " << strerror(errno) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Calculate total size of new records
+    size_t batch_size = 0;
+    for (const auto& record : records)
+        batch_size += sizeof(record.key) + sizeof(record.len) + record.len;
+
+    // Extend the file
+    size_t new_size = current_size + batch_size;
+    if (ftruncate(fd, new_size) != 0) {
         std::cerr << "ftruncate failed: " << strerror(errno) << std::endl;
         exit(EXIT_FAILURE);
     }
 
-    // Memory-map the output file
-    void* map_ptr = mmap(nullptr, total_size, PROT_WRITE, MAP_SHARED, fd, 0);
+    // Align offset to page boundary
+    off_t aligned_offset = current_size & ~(page_size - 1);
+    size_t delta = current_size - aligned_offset;
+    size_t map_len = delta + batch_size;
+
+    void* map_ptr = mmap(nullptr, map_len, PROT_WRITE, MAP_SHARED, fd, aligned_offset);
     if (map_ptr == MAP_FAILED) {
         std::cerr << "mmap failed: " << strerror(errno) << std::endl;
         exit(EXIT_FAILURE);
     }
 
-    char* out = static_cast<char*>(map_ptr);
+    // Offset into the mapped memory where writing should start
+    char* out = static_cast<char*>(map_ptr) + delta;
     size_t offset = 0;
 
     for (const auto& record : records) {
@@ -56,18 +75,16 @@ static ssize_t writeBatchToFile(int fd, std::deque<Record>& records) {
 
     records.clear();
 
-    // Optional: flush changes to disk
-    if (msync(map_ptr, total_size, MS_SYNC) != 0) {
+    if (msync(map_ptr, map_len, MS_SYNC) != 0) {
         std::cerr << "msync failed: " << strerror(errno) << std::endl;
-        // We can still proceed, it's not fatal for performance tests
     }
 
-    if (munmap(map_ptr, total_size) != 0) {
+    if (munmap(map_ptr, map_len) != 0) {
         std::cerr << "munmap failed: " << strerror(errno) << std::endl;
         exit(EXIT_FAILURE);
     }
 
-    return static_cast<ssize_t>(total_size);
+    return static_cast<ssize_t>(batch_size);
 }
 
 // static ssize_t writeBatchToFile(int fd, std::deque<Record>& records) {

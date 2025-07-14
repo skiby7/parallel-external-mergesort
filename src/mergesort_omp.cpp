@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -118,12 +119,6 @@ int main(int argc, char *argv[]) {
     // assert(!checkSortedFile(filename));
 
     TIMERSTART(mergesort_omp)
-    // std::vector<std::pair<size_t, size_t>> chunks = computeChunks(filename, omp_get_max_threads());
-    // #pragma omp parallel for
-    // for (size_t i = 0; i < chunks.size(); i++) {
-    //     size_t size = chunks[i].second - chunks[i].first;
-    //     genSequenceFiles(filename, chunks[i].first, size, MAX_MEMORY/omp_get_max_threads(), "/tmp/run#" + generateUUID());
-    // }
     computeChunksAndProcess(filename, omp_get_max_threads());
 
     std::vector<std::string> sequences = findFiles("/tmp/run");
@@ -154,14 +149,13 @@ int main(int argc, char *argv[]) {
         }
         #pragma omp parallel for
         for (size_t i = 0; i < levels[current_level - 1].size() - 1; i += 2) {
-            std::string filename = "/tmp/merge#" + generateUUID();;
+            std::string filename = "/tmp/merge#" + generateUUID();
             mergeFiles(levels[current_level - 1][i], levels[current_level - 1][i + 1], filename, MAX_MEMORY/omp_get_max_threads());
             #pragma omp critical
             levels[current_level].push_back(filename);
         }
         current_level++;
     }
-
     rename(levels.back().back().c_str(), "/tmp/output.dat");
     TIMERSTOP(mergesort_omp)
 
