@@ -21,6 +21,10 @@ SRC_DIR = src
 %_debug: $(SRC_DIR)/%.cpp $(SRC_DIR)/include
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(DOPTFLAGS) -o $@ $< $(LDFLAGS)
 
+# file_generator: $(SRC_DIR)/include
+# 	$(CXX) $(CXXFLAGS) $(INCLUDES) -o gen_file src/gen_file.cpp $(LDFLAGS)
+
+
 all: $(TARGETS)
 
 debug: $(DEBUG_TARGETS)

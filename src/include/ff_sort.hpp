@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <ff/ff.hpp>
 #include <ff/pipeline.hpp>
+#include <string>
 #include <unistd.h>
 #include <vector>
 
@@ -40,27 +41,108 @@ struct Master : ff::ff_monode_t<work_t> {
     size_t expected_merges;
     size_t nthreads;
     std::string filename;
-    Master(std::string filename) :
+    std::string run_prefix;
+    std::string merge_prefix;
+    std::string output_file;
+    Master(std::string filename, std::string base_path) :
         current_level(0), submitted_sort_tasks(0), merge_count(0),
-        nthreads(NTHREADS), filename(filename) {}
+        nthreads(NTHREADS), filename(filename), run_prefix(base_path+"/run#"),
+        merge_prefix(base_path+"/merge#"), output_file(base_path+"/output.dat") {}
 
     void kill_threads(size_t expected_merges) {
         while (nthreads > expected_merges)
             ff_send_out_to(EOS, --nthreads);
     }
-    void send_out_sort_tasks () {
-        std::vector<std::pair<size_t, size_t>> chunks = computeChunks(filename, nthreads);
-        for (size_t i = 0; i < chunks.size(); i++) {
-            size_t size = chunks[i].second - chunks[i].first;
+
+    void send_out_sort_tasks() {
+        size_t file_size = getFileSize(filename);
+        size_t chunk_size = file_size / (nthreads * nthreads);
+
+        int fd = open(filename.c_str(), O_RDONLY);
+        if (fd < 0) {
+            std::cerr << "Error opening file: " << strerror(errno) << std::endl;
+            return;
+        }
+
+        std::vector<char> buffer(MAX_MEMORY / nthreads);
+        size_t buffer_offset = 0;
+        size_t file_offset = 0;
+
+        size_t logical_start = 0;
+        size_t logical_end = 0;
+
+        size_t bytes_in_buffer = 0;
+        size_t task_id = 0;
+
+        while (true) {
+            // Shift leftover bytes
+            if (buffer_offset < bytes_in_buffer) {
+                memmove(buffer.data(), buffer.data() + buffer_offset, bytes_in_buffer - buffer_offset);
+                bytes_in_buffer -= buffer_offset;
+            } else {
+                bytes_in_buffer = 0;
+            }
+            buffer_offset = 0;
+
+            ssize_t bytes_read = read(fd, buffer.data() + bytes_in_buffer, buffer.size() - bytes_in_buffer);
+            if (bytes_read < 0) {
+                std::cerr << "Read error: " << strerror(errno) << std::endl;
+                close(fd);
+                return;
+            } else if (bytes_read == 0 && bytes_in_buffer == 0) {
+                break; // EOF
+            }
+            bytes_in_buffer += bytes_read;
+
+            // Parse complete records
+            while (buffer_offset + sizeof(uint64_t) + sizeof(uint32_t) <= bytes_in_buffer) {
+                size_t local_offset = buffer_offset;
+
+                buffer_offset += sizeof(uint64_t); // skip key
+
+                uint32_t len = *reinterpret_cast<uint32_t*>(&buffer[buffer_offset]);
+                buffer_offset += sizeof(uint32_t);
+
+                if (buffer_offset + len > bytes_in_buffer) {
+                    buffer_offset = local_offset;
+                    break;
+                }
+
+                buffer_offset += len;
+
+                logical_end = file_offset + buffer_offset;
+
+                if (logical_end - logical_start >= chunk_size) {
+                    size_t size = logical_end - logical_start;
+                    ff_send_out(new work_t{new sort_task_t{
+                        filename,
+                        logical_start,
+                        size,
+                        MAX_MEMORY / nthreads,
+                        task_id++
+                    }, nullptr});
+                    submitted_sort_tasks++;
+                    logical_start = logical_end;
+                }
+            }
+
+            file_offset += buffer_offset;
+        }
+
+        // Emit remaining bytes
+        if (logical_end > logical_start) {
+            size_t size = logical_end - logical_start;
             ff_send_out(new work_t{new sort_task_t{
                 filename,
-                chunks[i].first,
+                logical_start,
                 size,
-                MAX_MEMORY/nthreads,
-                i
+                MAX_MEMORY / nthreads,
+                task_id++
             }, nullptr});
             submitted_sort_tasks++;
         }
+
+        close(fd);
     }
 
     work_t* svc(work_t* task) {
@@ -72,7 +154,7 @@ struct Master : ff::ff_monode_t<work_t> {
 
             // If all sorted chunks are collected, start merging
             if (submitted_sort_tasks == 0) {
-                std::vector<std::string> sequences = findFiles("/tmp/run");
+                std::vector<std::string> sequences = findFiles(run_prefix);
 
                 levels.push_back({});
                 if (sequences.size() % 2) {
@@ -83,7 +165,7 @@ struct Master : ff::ff_monode_t<work_t> {
                 expected_merges = sequences.size() / 2;
                 // kill_threads(expected_merges);
                 for (size_t i = 0; i < sequences.size() - 1; i+=2) {
-                    std::string filename = "/tmp/merge#" + generateUUID();
+                    std::string filename = merge_prefix + generateUUID();
                     ff_send_out(new work_t{nullptr, new merge_task_t{
                         sequences[i],
                         sequences[i + 1],
@@ -100,7 +182,7 @@ struct Master : ff::ff_monode_t<work_t> {
             merge_count++;
             if (merge_count == expected_merges) {
                 if (levels[current_level].size() == 1) {
-                    rename(levels.back().back().c_str(), "/tmp/output.dat");
+                    rename(levels.back().back().c_str(), output_file.c_str());
                     return EOS;
                 }
 
@@ -114,7 +196,7 @@ struct Master : ff::ff_monode_t<work_t> {
                 expected_merges = levels[current_level - 1].size() / 2;
                 // kill_threads(expected_merges);
                 for (size_t i = 0; i < levels[current_level - 1].size() - 1; i += 2) {
-                    std::string filename = "/tmp/merge#" + generateUUID();;
+                    std::string filename = merge_prefix + generateUUID();
                     ff_send_out(new work_t{nullptr, new merge_task_t{
                         levels[current_level - 1][i],
                         levels[current_level - 1][i + 1],
@@ -135,7 +217,8 @@ struct Master : ff::ff_monode_t<work_t> {
 
 
 struct WorkerNode : ff::ff_node_t<work_t> {
-    WorkerNode() {}
+    std::string run_prefix;
+    WorkerNode(std::string base_path) : run_prefix(base_path+"/run#") {}
     work_t* svc(work_t* work) {
         if (work->sort_task) {
             genSequenceFiles(
@@ -143,7 +226,7 @@ struct WorkerNode : ff::ff_node_t<work_t> {
                 work->sort_task->start,
                 work->sort_task->size,
                 work->sort_task->memory,
-                "/tmp/run#" + generateUUID());
+                run_prefix + generateUUID());
 
             ff_send_out(work);
         } else if (work->merge_task) {

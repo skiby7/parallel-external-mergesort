@@ -1,3 +1,8 @@
+/**
+ * This file utilities functions shared between the various merge
+ * implementations and the file generator.
+ */
+
 #ifndef _COMMON_HPP
 #define _COMMON_HPP
 
@@ -29,75 +34,49 @@ static std::string generateUUID() {
     return std::string(uuid_str);
 }
 
-
-
 static void generateFile(std::string filename) {
+    int fd = open(filename.c_str(), O_RDWR | O_CREAT | O_APPEND, 0666);
+    if (fd < 0) {
+        if (errno == EEXIST)
+            fd = open(filename.c_str(), O_RDWR | O_APPEND);
+        else {
+            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
+            exit(-1);
+        }
+    }
+
     Record record;
-    std::vector<Record> records;
+    std::deque<Record> records;
     size_t size = 0;
+
     for (size_t i = 0; i < ARRAY_SIZE; i++) {
         record.key = feistel_encrypt((uint32_t)i, 0xDEADBEEF, ROUNDS);
         record.len = rand() % (RECORD_SIZE - 8) + 8;
-        record.rpayload = new char[record.len];
-        for (size_t j = 0; j < record.len; j++) {
-            record.rpayload[j] = feistel_encrypt(j+i, 0x01, 1) & 0xFF;
-        }
+        record.rpayload = std::make_unique<char[]>(record.len);
+        for (size_t j = 0; j < record.len; j++)
+            record.rpayload[j] = feistel_encrypt(j + i, 0x01, 1) & 0xFF;
+
         size += sizeof(record) + record.len;
         records.push_back(record);
+
         if (size > MAX_MEMORY) {
             size = 0;
-            appendRecordsToFile(filename, records);
-            records.clear();
+            appendToFile(fd, std::move(records));
+        }
+
+        if (i % (ARRAY_SIZE / 100) == 0 || i == ARRAY_SIZE - 1) {
+            printf("\rProgress: %zu%%", (i * 100) / ARRAY_SIZE);
+            fflush(stdout);
         }
     }
+
     if (!records.empty())
-        appendRecordsToFile(filename, records);
-    records.clear();
+        appendToFile(fd, std::move(records));
+
+    printf("\rProgress: 100%%\n");
+    close(fd);
 }
 
-static std::vector<Record> generateArray(std::vector<Record>& records) {
-    records.resize(ARRAY_SIZE);
-    const size_t num_threads = std::thread::hardware_concurrency();
-    std::vector<std::thread> threads;
-
-    auto worker = [&](size_t start, size_t end) {
-        for (size_t i = start; i < end; i++) {
-            records[i].key = feistel_encrypt((uint32_t)i, 0xDEADBEEF, ROUNDS);
-            records[i].len = rand() % (RECORD_SIZE - 8) + 8;
-            records[i].rpayload = new char[records[i].len];
-            for (size_t j = 0; j < records[i].len; j++) {
-                records[i].rpayload[j] = feistel_encrypt(j+i, 0x01, 1) & 0xFF;
-            }
-        }
-    };
-
-    size_t chunk_size = ARRAY_SIZE / num_threads;
-    size_t remaining = ARRAY_SIZE % num_threads;
-    size_t start = 0;
-
-    for (size_t i = 0; i < num_threads; i++) {
-        size_t end = start + chunk_size + (i < remaining ? 1 : 0);
-        threads.emplace_back(worker, start, end);
-        start = end;
-    }
-
-    for (auto& t : threads) {
-        t.join();
-    }
-
-    return records;
-}
-
-
-static bool deleteFile(const char* filename) {
-    if (unlink(filename) == 0) {
-        return true;
-    } else {
-        std::cerr << "Error deleting file '" << filename << "': "
-                  << strerror(errno) << std::endl;
-        return false;
-    }
-}
 
 
 static inline bool checkSorted(std::vector<unsigned long>& array) {
@@ -110,9 +89,50 @@ static inline bool checkSorted(std::vector<unsigned long>& array) {
 }
 
 static bool checkSortedFile(const std::string& filename) {
-    std::vector<unsigned long> records;
-    readKeysFromFile(filename, records);
-    return checkSorted(records);
+    int fd = open(filename.c_str(), O_RDONLY);
+    if (fd < 0) {
+        std::cerr << "Error opening file for reading: " << filename << " " << strerror(errno) << std::endl;
+        exit(-1);
+    }
+    ssize_t read_size = 0;
+    unsigned long key = 0;
+    uint32_t len = 0;
+
+    unsigned long prev_key = -1;
+
+    while(true) {
+        read_size = read(fd, &key, sizeof(key));
+        if (read_size == 0) break; // EOF
+        if (read_size < 0) {
+            std::cerr << "Error reading key: " << strerror(errno) << std::endl;
+            close(fd);
+            exit(-1);
+        }
+        if (key < prev_key) {
+            std::cerr << "Array is not sorted: " << key << " < " << prev_key << std::endl;
+            close(fd);
+            return false;
+        }
+        prev_key = key;
+
+        // Read length
+        read_size = read(fd, &len, sizeof(len));
+        if (read_size < 0) {
+            std::cerr << "Error reading length: " << strerror(errno) << std::endl;
+            close(fd);
+            exit(-1);
+        }
+
+        // Skip payload
+        if (lseek(fd, len, SEEK_CUR) == -1) {
+            std::cerr << "Error seeking past payload: " << strerror(errno) << std::endl;
+            close(fd);
+            exit(-1);
+        }
+    }
+
+    close(fd);
+    return true;
 }
 
 

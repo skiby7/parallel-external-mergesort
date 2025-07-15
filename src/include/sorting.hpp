@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <queue>
 #include <unistd.h>
+#include <utility>
 #include <vector>
 #include <errno.h>
 #include <dirent.h>
@@ -21,21 +22,19 @@
 #include <omp.h>
 #include <sys/mman.h>
 
-static void printRunFiles(const std::string& prefix_path);
-
 struct RecordComparator {
     bool operator()(Record a, Record b){
         return (a.key > b.key);
     }
 };
 
-
-struct CompareRecord {
+struct PairRecordComparator {
     bool operator()(const std::pair<Record, size_t>& a, const std::pair<Record, size_t>& b) const {
-        return a.first > b.first;  // Min-heap based on Record comparison
+        return a.first > b.first;
     }
 };
-static std::string removeSubstring(std::string str, const std::string& toRemove) {
+
+static inline std::string removeSubstring(std::string str, const std::string& toRemove) {
     size_t pos = str.find(toRemove);
     if (pos != std::string::npos) {
         str.erase(pos, toRemove.length());
@@ -43,7 +42,15 @@ static std::string removeSubstring(std::string str, const std::string& toRemove)
     return str;
 }
 
-
+/**
+ * Merge two sorted files into a single output file.
+ * It is used mainly in the parallel version of the algorithm.
+ *
+ * @param file1 The first input file.
+ * @param file2 The second input file.
+ * @param output_filename The output file.
+ * @param max_mem The maximum memory available to read records from files.
+ */
 static void mergeFiles(const std::string& file1, const std::string& file2,
                        const std::string& output_filename, const ssize_t max_mem) {
     std::deque<Record> buffer1;
@@ -72,7 +79,6 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
         }
     }
 
-
     // Initial buffer fills
     bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
     bytes_read2 += readRecordsFromFile(file2, buffer2, bytes_read2, usable_mem);
@@ -87,8 +93,6 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
 
         if (buffer2.empty() && bytes_read2 < bytes_to_process2)
             bytes_read2 += readRecordsFromFile(file2, buffer2, bytes_read2, usable_mem);
-
-
 
         if (buffer1.empty()) use_b1 = false;
         else if (buffer2.empty()) use_b1 = true;
@@ -108,14 +112,14 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
         }
 
         if (out_buf_size >= usable_mem) {
-            bytes_written += writeBatchToFile(fp, output_buffer);
+            bytes_written += appendToFile(fp, std::move(output_buffer));
             out_buf_size = 0;
             output_buffer.clear();
         }
     }
 
     if (!output_buffer.empty())
-        bytes_written += writeBatchToFile(fp, output_buffer);
+        bytes_written += appendToFile(fp, std::move(output_buffer));
 
 
     deleteFile(file1.c_str());
@@ -141,6 +145,14 @@ struct BufferState {
 };
 
 
+/**
+ * This function performs k-way merge of sorted files into a single output file.
+ * It is used in the sequential version of the merge sort.
+ *
+ * @param input_files The input file names.
+ * @param output_filename The output file name.
+ * @param max_mem The maximum memory available for sorting.
+ */
 static void kWayMergeFiles(const std::vector<std::string>& input_files,
                            const std::string& output_filename,
                            const ssize_t max_mem) {
@@ -157,13 +169,10 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
             buffers[i].filename, buffers[i].buffer, buffers[i].bytes_read, usable_mem);
     }
 
-    // Priority queue to track smallest record among buffers
-
-    // std::priority_queue<Record, std::vector<Record>, RecordComparator> min_heap;
     std::priority_queue<
                std::pair<Record, size_t>,
                std::vector<std::pair<Record, size_t>>,
-               CompareRecord
+               PairRecordComparator
            > min_heap;
 
     // Prime the heap
@@ -205,14 +214,14 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
         }
 
         if (out_buf_size >= usable_mem) {
-            bytes_written += writeBatchToFile(fd, output_buffer);
+            bytes_written += appendToFile(fd, std::move(output_buffer));
             output_buffer.clear();
             out_buf_size = 0;
         }
     }
 
     if (!output_buffer.empty()) {
-        bytes_written += writeBatchToFile(fd, output_buffer);
+        bytes_written += appendToFile(fd, std::move(output_buffer));
     }
 
     close(fd);
@@ -223,66 +232,16 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
 }
 
 /**
- * After some tests we know that this function generates the sequences
- * as expected, even though the sum of the run files sizes are not equal to
- * the original file. This is not a problem, we just have to keep it in mind.
+ * This is an implementation of the snow plow
+ * technique to generate sequence files longer than the memory available.
+ * It produces sequences 2M long on average, reducing the number of merge levels needed.
+ *
+ * @param input_filename The input file name.
+ * @param offset The offset to start reading from.
+ * @param bytes_to_process The number of bytes to process.
+ * @param max_memory The maximum memory to use.
+ * @param output_filename_prefix The prefix for the output file names.
  */
-// static void genSequenceFiles(
-//     const std::string& input_filename,
-//     ssize_t offset,
-//     ssize_t bytes_to_process,
-//     ssize_t max_memory,
-//     const std::string& output_filename_prefix
-// ) {
-//     ssize_t usable_mem = (max_memory * 9)/10; // Leaving a 10% of space to read and write records
-//     std::vector<Record> unsorted;
-//     std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
-//     std::vector<Record> buffer;
-//     size_t total_records_read = 0;
-//     size_t total_records_written = 0;
-
-//     // Skip the unsorted initialization and push the records directly to the heap
-//     ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, std::min(usable_mem, bytes_to_process));
-
-//     total_records_read += heap.size();
-//     ssize_t run = 1, curr_offset = offset + bytes_read, free_bytes = usable_mem - bytes_read, last_read = bytes_read, bytes_remaining = bytes_to_process - bytes_read;
-
-//     while (bytes_remaining > 0 || !heap.empty() || !unsorted.empty()) { // I have to process all the bytes in the file
-//         std::string output_filename = output_filename_prefix + std::to_string(run);
-//         bytes_remaining = bytes_to_process - bytes_read;
-//         while (!heap.empty()) { // A run is complete when the heap is empty
-//             Record record = heap.top();
-//             heap.pop();
-
-//             // Flush the buffer to the output file and store the bytes freed
-//             free_bytes += appendRecordToFile(output_filename, record);
-//             total_records_written++;
-//             if (bytes_remaining > 0) {
-//                 // If there are bytes remained to process, read them into the buffer or at least read some bytes
-//                 last_read = readRecordsFromFile(input_filename, buffer, curr_offset, std::min(bytes_remaining, free_bytes));
-//                 total_records_read += buffer.size();
-//                 // If I manage to read something I have to update the free_bytes counter
-//                 // And the bytes_read counter
-//                 free_bytes -= last_read;
-//                 bytes_read += last_read;
-//                 curr_offset += last_read;
-//                 bytes_remaining = bytes_to_process - bytes_read;
-//             }
-//             for (auto& r : buffer) {
-//                 if (r < record) unsorted.push_back(std::move(r));
-//                 else heap.push(std::move(r));
-//             }
-//             buffer.clear();
-//         }
-//         // If I'm here it means that the heap is empty, so let's process the unsorted set
-//         for(auto& r : unsorted)
-//             heap.push(std::move(r));
-//         // Now the heap is full again and we can clear the unsorted set
-//         unsorted.clear();
-//         run++;
-//     }
-// }
-
 static void genSequenceFiles(
     const std::string& input_filename,
     size_t offset,
@@ -304,9 +263,10 @@ static void genSequenceFiles(
 
     // Skip the unsorted initialization and push the records directly to the heap
     ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, std::min(usable_mem, bytes_to_process));
-
     total_records_read += heap.size();
-    ssize_t run = 1, curr_offset = offset + bytes_read, free_bytes = usable_mem - bytes_read, last_read = bytes_read, bytes_remaining = bytes_to_process - bytes_read;
+
+    ssize_t run = 1, curr_offset = offset + bytes_read, free_bytes = usable_mem - bytes_read, last_read = bytes_read;
+    ssize_t bytes_remaining = bytes_to_process - bytes_read;
 
     while (bytes_remaining > 0 || !heap.empty() || !unsorted.empty()) { // I have to process all the bytes in the file
         std::string output_filename = output_filename_prefix + std::to_string(run);
@@ -348,7 +308,7 @@ static void genSequenceFiles(
             }
             buffer.clear();
             if (output_buffer_size > usable_mem / 2) {
-                io_offset += writeBatchToFile(fd, output_buffer);
+                io_offset += appendToFile(fd, std::move(output_buffer));
                 output_buffer.clear();
                 output_buffer_size = 0;
             }
@@ -359,7 +319,7 @@ static void genSequenceFiles(
         // Now the heap is full again and we can clear the unsorted set
         unsorted.clear();
         if (output_buffer_size) {
-            io_offset += writeBatchToFile(fd, output_buffer);
+            io_offset += appendToFile(fd, std::move(output_buffer));
             output_buffer.clear();
             output_buffer_size = 0;
         }
@@ -368,16 +328,16 @@ static void genSequenceFiles(
     }
 }
 
-
+/**
+ * Find files in a directory with a given prefix.
+ *
+ * @param prefix_path The path to the directory and the prefix of the files to find.
+ * @return A vector of strings containing the paths of the matching files.
+ */
 static std::vector<std::string> findFiles(const std::string& prefix_path) {
-
     std::vector<std::string> matching_files;
-
-
-    // Manual path parsing instead of std::filesystem
     std::string directory;
     std::string filename_prefix;
-
     size_t last_slash = prefix_path.find_last_of('/');
     if (last_slash != std::string::npos) {
         directory = prefix_path.substr(0, last_slash);
@@ -387,11 +347,9 @@ static std::vector<std::string> findFiles(const std::string& prefix_path) {
         filename_prefix = prefix_path;
     }
 
-    // If directory is empty, use current directory
     if (directory.empty()) {
         directory = ".";
     }
-    // Check if directory exists and is accessible
     struct stat dir_stat;
     if (stat(directory.c_str(), &dir_stat) != 0) {
         std::cerr << "Cannot access directory: " << directory << std::endl;
@@ -404,7 +362,6 @@ static std::vector<std::string> findFiles(const std::string& prefix_path) {
         return matching_files;
     }
 
-    // Open directory using syscalls
     DIR* dir = opendir(directory.c_str());
     if (dir == nullptr) {
         std::cerr << "Error opening directory: " << directory << std::endl;
@@ -414,21 +371,14 @@ static std::vector<std::string> findFiles(const std::string& prefix_path) {
 
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
-        // Skip . and .. entries
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
-
-        // Build full path for stat
         std::string full_entry_path = directory + "/" + entry->d_name;
-
-        // Check if it's a regular file
         struct stat file_stat;
         if (stat(full_entry_path.c_str(), &file_stat) == 0) {
             if (S_ISREG(file_stat.st_mode)) {  // Regular file
                 std::string filename = entry->d_name;
-
-                // Check if filename starts with the prefix
                 if (filename.length() >= filename_prefix.length() &&
                     filename.substr(0, filename_prefix.length()) == filename_prefix) {
                     matching_files.push_back(full_entry_path);
@@ -436,24 +386,8 @@ static std::vector<std::string> findFiles(const std::string& prefix_path) {
             }
         }
     }
-
     closedir(dir);
-
     return matching_files;
-}
-
-static void printRunFiles(const std::string& prefix_path) {
-    std::vector<std::string> matching_files = findFiles(prefix_path);
-    std::vector<Record> content;
-    for(const auto& file : matching_files) {
-        content.clear();  // Clear before reading each file
-        readRecordsFromFile(file, content, 0, MAX_MEMORY);
-        std::cout << "Printing records from file: " << file << std::endl;
-        for (const auto& r : content) {
-            std::cout << r.key << std::endl;
-        }
-        std::cout << "###########################" << std::endl;
-    }
 }
 
 #endif // _SORTING_HPP
