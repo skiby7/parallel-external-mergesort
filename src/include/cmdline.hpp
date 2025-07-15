@@ -14,12 +14,17 @@ static inline void usage(const char *argv0) {
     std::printf("--------------------\n");
     std::printf("Usage: %s [options]\n", argv0);
     std::printf("\nOptions:\n");
-    // std::printf(" -s N: number array size (default s=%d)\n", ARRAY_SIZE);
-    // std::printf(" -r R: record payload size in bytes (default r=%d)\n", RECORD_SIZE);
     std::printf(" -t T: number of threads (default=%d)\n", NTHREADS);
-    // std::printf(" -d D: change feistel rounds to change the Record->key value (default=%d)\n", ROUNDS);
+    std::printf(" -k: use k-way merge in the sequential version (default=%d)\n", KWAY_MERGE ? 1 :0);
     std::printf(" -m M: set the max memory usage (default=%ld)\n", MAX_MEMORY);
     std::printf("--------------------\n");
+    /**
+     * These options are still relevant for the generation of the file,
+     * so I just keep them here as a reminder
+     */
+    // std::printf(" -d D: change feistel rounds to change the Record->key value (default=%d)\n", ROUNDS);
+    // std::printf(" -s N: number array size (default s=%d)\n", ARRAY_SIZE);
+    // std::printf(" -r R: record payload size in bytes (default r=%d)\n", RECORD_SIZE);
 }
 
 
@@ -37,11 +42,15 @@ static bool isNumber(const char* s, long &n) {
 
 static inline int parseCommandLine(int argc, char *argv[]) {
     extern char *optarg;
-    const std::string optstr = "r:s:t:d:m:";
+    const std::string optstr = "r:s:t:d:m:k";
     long opt, start = 1;
 
     while ((opt = getopt(argc, argv, optstr.c_str())) != -1) {
         switch (opt) {
+            case 'k': {
+                KWAY_MERGE = true;
+                start += 1;
+            } break;
             case 's': {
                 long s = 0;
                 if (!isNumber(optarg, s)) {

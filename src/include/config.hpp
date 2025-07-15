@@ -9,5 +9,6 @@ static unsigned int ARRAY_SIZE = 10000;
 static unsigned int ROUNDS = 4;
 static unsigned int SORT_THRESHOLD = 64;
 static uint64_t MAX_MEMORY = 1ULL << 33; // 8 GB
+static bool KWAY_MERGE = false;
 
 #endif // !_CONFIG_HPP

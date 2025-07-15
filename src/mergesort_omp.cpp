@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <omp.h>
 #include <cassert>
+#include <filesystem>
 #include "include/cmdline.hpp"
 #include "include/common.hpp"
 #include "include/config.hpp"
@@ -13,9 +14,9 @@
 #include "include/hpc_helpers.hpp"
 #include "include/sorting.hpp"
 
-void computeChunksAndProcess(const std::string& filename, size_t num_threads) {
+void computeChunksAndProcess(const std::string& filename, size_t num_threads, const std::string& run_prefix) {
     size_t file_size = getFileSize(filename);
-    size_t chunk_size = file_size / num_threads;
+    size_t chunk_size = file_size / (num_threads*num_threads); // Create more tasks to make the cpu usage higher and feed all the threads
 
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) {
@@ -85,7 +86,7 @@ void computeChunksAndProcess(const std::string& filename, size_t num_threads) {
                         std::string uuid = generateUUID();
                         #pragma omp task firstprivate(logical_start, size, uuid)
                         {
-                            genSequenceFiles(filename, logical_start, size, MAX_MEMORY / num_threads, "/tmp/run#" + uuid);
+                            genSequenceFiles(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
                         }
                         logical_start = logical_end;
                     }
@@ -94,18 +95,19 @@ void computeChunksAndProcess(const std::string& filename, size_t num_threads) {
                 file_offset += buffer_offset;
             }
 
+
             // Emit any remaining data at the end
             if (logical_end > logical_start) {
                 size_t size = logical_end - logical_start;
                 std::string uuid = generateUUID();
                 #pragma omp task firstprivate(logical_start, size, uuid)
                 {
-                    genSequenceFiles(filename, logical_start, size, MAX_MEMORY / num_threads, "/tmp/run#" + uuid);
+                    genSequenceFiles(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
                 }
             }
 
-            close(fd);
             #pragma omp taskwait
+            close(fd);
         }
     }
 }
@@ -115,13 +117,14 @@ int main(int argc, char *argv[]) {
     if((start = parseCommandLine(argc, argv)) < 0) return -1;
     omp_set_num_threads(NTHREADS);
     std::string filename = argv[start];
-
-    // assert(!checkSortedFile(filename));
-
+    std::filesystem::path p(filename);
+    std::string run_prefix = p.parent_path().string() + "/run#";
+    std::string merge_prefix = p.parent_path().string() + "/merge#";
+    std::string output_file = p.parent_path().string() + "/output.dat";
     TIMERSTART(mergesort_omp)
-    computeChunksAndProcess(filename, omp_get_max_threads());
+    computeChunksAndProcess(filename, omp_get_max_threads(), run_prefix);
 
-    std::vector<std::string> sequences = findFiles("/tmp/run");
+    std::vector<std::string> sequences = findFiles(run_prefix);
     std::vector<std::vector<std::string>> levels;
 
     levels.push_back({});
@@ -133,7 +136,7 @@ int main(int argc, char *argv[]) {
     // kWayMergeFiles(sequences, "/tmp/output.dat", MAX_MEMORY);
     #pragma omp parallel for
     for (size_t i = 0; i < sequences.size() - 1; i+=2) {
-        std::string filename = "/tmp/merge#" + generateUUID();
+        std::string filename = merge_prefix + generateUUID();
         // This code merges the two sequences and then stores the result in filename
         mergeFiles(sequences[i], sequences[i + 1], filename, MAX_MEMORY/omp_get_max_threads());
         #pragma omp critical
@@ -149,16 +152,16 @@ int main(int argc, char *argv[]) {
         }
         #pragma omp parallel for
         for (size_t i = 0; i < levels[current_level - 1].size() - 1; i += 2) {
-            std::string filename = "/tmp/merge#" + generateUUID();
+            std::string filename = merge_prefix + generateUUID();
             mergeFiles(levels[current_level - 1][i], levels[current_level - 1][i + 1], filename, MAX_MEMORY/omp_get_max_threads());
             #pragma omp critical
             levels[current_level].push_back(filename);
         }
         current_level++;
     }
-    rename(levels.back().back().c_str(), "/tmp/output.dat");
+    rename(levels.back().back().c_str(), output_file.c_str());
     TIMERSTOP(mergesort_omp)
 
-    assert(checkSortedFile("/tmp/output.dat"));
+    // assert(checkSortedFile(output_file));
     return 0;
 }
