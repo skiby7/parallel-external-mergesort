@@ -1,7 +1,7 @@
 #ifndef _FILESYSTEM_HPP
 #define _FILESYSTEM_HPP
 
-#include "config.hpp"
+#include "arena.hpp"
 #include "record.hpp"
 #include <iostream>
 
@@ -41,7 +41,9 @@ static bool deleteFile(const char* filename) {
  * @param records The records to append.
  * @return The number of bytes written.
  */
-static ssize_t appendToFile(int fd, std::deque<Record>&& records) {
+
+template<typename Container>
+static ssize_t appendToFile(int fd, Container&& records) {
     size_t page_size = sysconf(_SC_PAGE_SIZE);
 
     off_t current_size = lseek(fd, 0, SEEK_END);
@@ -212,7 +214,10 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
 
             if constexpr (
                 std::is_same_v<Container, std::vector<Record>> ||
-                std::is_same_v<Container, std::deque<Record>>) {
+                std::is_same_v<Container, std::deque<Record>> ||
+                std::is_same_v<Container, ArenaDeque<Record>> ||
+                std::is_same_v<Container, ArenaVector<Record>>
+            ) {
                 records.push_back(std::move(rec));
             } else {
                 records.push(std::move(rec));

@@ -46,7 +46,7 @@ static void generateFile(std::string filename) {
     }
 
     Record record;
-    std::deque<Record> records;
+    ArenaDeque<Record> records;
     size_t size = 0;
 
     for (size_t i = 0; i < ARRAY_SIZE; i++) {

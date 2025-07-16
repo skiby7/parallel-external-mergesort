@@ -7,6 +7,7 @@
 #include <omp.h>
 #include <cassert>
 #include <filesystem>
+#include "include/arena.hpp"
 #include "include/cmdline.hpp"
 #include "include/common.hpp"
 #include "include/config.hpp"
@@ -116,6 +117,8 @@ int main(int argc, char *argv[]) {
     int start = 0;
     if((start = parseCommandLine(argc, argv)) < 0) return -1;
     omp_set_num_threads(NTHREADS);
+
+
     std::string filename = argv[start];
     std::filesystem::path p(filename);
     std::string run_prefix = p.parent_path().string() + "/run#";

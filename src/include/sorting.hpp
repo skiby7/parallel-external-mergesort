@@ -1,9 +1,9 @@
 #ifndef _SORTING_HPP
 #define _SORTING_HPP
 
-#include "common.hpp"
-#include "config.hpp"
+#include "arena.hpp"
 #include "filesystem.hpp"
+#include "record.hpp"
 #include <algorithm>
 #include <cstring>
 #include <deque>
@@ -53,9 +53,14 @@ static inline std::string removeSubstring(std::string str, const std::string& to
  */
 static void mergeFiles(const std::string& file1, const std::string& file2,
                        const std::string& output_filename, const ssize_t max_mem) {
-    std::deque<Record> buffer1;
-    std::deque<Record> buffer2;
-    std::deque<Record> output_buffer;
+
+
+    MemoryArena arena1(max_mem/4);
+    MemoryArena arena2(max_mem/4);
+    MemoryArena arena3(max_mem/2);
+    ArenaDeque<Record> buffer1((ArenaAllocator<Record>(&arena1)));
+    ArenaDeque<Record> buffer2((ArenaAllocator<Record>(&arena2)));
+    ArenaDeque<Record> output_buffer((ArenaAllocator<Record>(&arena3)));
 
     size_t bytes_to_process1 = getFileSize(file1);
     size_t bytes_to_process2 = getFileSize(file2);
@@ -85,14 +90,16 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
 
     while (!buffer1.empty() || !buffer2.empty() ||
                bytes_read1 < bytes_to_process1 || bytes_read2 < bytes_to_process2) {
-        // Refill buffer1 if needed and possible
-        if (buffer1.empty() && bytes_read1 < bytes_to_process1)
+        if (buffer1.empty() && bytes_read1 < bytes_to_process1) {
             bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
+            buffer1.clear();
+            arena1.reset();
+        }
 
-
-
-        if (buffer2.empty() && bytes_read2 < bytes_to_process2)
+        if (buffer2.empty() && bytes_read2 < bytes_to_process2) {
             bytes_read2 += readRecordsFromFile(file2, buffer2, bytes_read2, usable_mem);
+            arena2.reset();
+        }
 
         if (buffer1.empty()) use_b1 = false;
         else if (buffer2.empty()) use_b1 = true;
@@ -114,7 +121,7 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
         if (out_buf_size >= usable_mem) {
             bytes_written += appendToFile(fp, std::move(output_buffer));
             out_buf_size = 0;
-            output_buffer.clear();
+            arena3.reset();
         }
     }
 
@@ -249,11 +256,13 @@ static void genSequenceFiles(
     size_t max_memory,
     const std::string& output_filename_prefix
 ) {
-    size_t usable_mem = (max_memory * 18) / 30; // Leaving a 10% of space to read and write records and using half for the output buffer
-    std::vector<Record> unsorted;
-    std::deque<Record> output_buffer;
+    size_t usable_mem = (max_memory * 15) / 30; // Leaving a 10% of space to read and write records and using half for the output buffer
+    MemoryArena arena(max_memory);
+
+    ArenaVector<Record> unsorted((ArenaAllocator<Record>(&arena)));
+    ArenaDeque<Record> output_buffer((ArenaAllocator<Record>(&arena)));
+    ArenaPriorityQueue<Record, RecordComparator> heap((ArenaAllocator<Record>(&arena)));
     size_t output_buffer_size = 0;
-    std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
 
     std::vector<Record> buffer;
     size_t total_records_read = 0;
