@@ -1,93 +1,104 @@
-import pandas as pd
+import re
+import sys
+import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
+from collections import defaultdict
 
-def load_and_preprocess_data():
-    """Load all CSV files and preprocess into speedup DataFrames"""
-    # Load data
-    seq_comp = pd.read_csv("sequential_compression.csv")
-    seq_decomp = pd.read_csv("sequential_decompression.csv")
-    par_comp = pd.read_csv("parallel_compression.csv")
-    par_decomp = pd.read_csv("parallel_decompression.csv")
+log_path = sys.argv[1]  # Replace with your actual path
 
-    # Melt parallel data to long format
-    def process_parallel(df, operation):
-        df = df.melt(id_vars=["Dataset"], var_name="nthreads", value_name="time")
-        df["nthreads"] = df["nthreads"].astype(int)
-        df["operation"] = operation
-        return df
+# Load log content
+with open(log_path, "r") as f:
+    log = f.read()
 
-    par_comp_long = process_parallel(par_comp, "compression")
-    par_decomp_long = process_parallel(par_decomp, "decompression")
+# Store times
+seq_binary_times = []
+seq_kway_times = []
+omp_times = defaultdict(list)
+ff_times = defaultdict(list)
 
-    # Merge with sequential times
-    def add_speedup(par_df, seq_df, operation):
-        merged = par_df.merge(
-            seq_df.rename(columns={"1": "seq_time"}),  # Rename sequential time column
-            on="Dataset"
-        )
-        merged["speedup"] = merged["seq_time"] / merged["time"]
-        return merged.drop(columns=["seq_time"])
+# Patterns
+time_pattern = r"# elapsed time \((.*?)\): ([0-9.]+)s"
+section_pattern = r"^#{33,}\n\((.*?)\)\n((?:# elapsed time.*\n?)+)"
 
-    speedup_comp = add_speedup(par_comp_long, seq_comp, "compression")
-    speedup_decomp = add_speedup(par_decomp_long, seq_decomp, "decompression")
+# Parse log sections
+for match in re.finditer(section_pattern, log, re.MULTILINE):
+    header = match.group(1)
+    body = match.group(2)
 
-    return pd.concat([speedup_comp, speedup_decomp])
+    if "sequential binary" in header:
+        seq_binary_times.extend([float(t) for _, t in re.findall(time_pattern, body)])
+    elif "sequential kway" in header:
+        seq_kway_times.extend([float(t) for _, t in re.findall(time_pattern, body)])
+    else:
+        threads_match = re.search(r"nthreads=(\d+)", header)
+        if not threads_match:
+            continue
+        threads = int(threads_match.group(1))
+        for algo, t in re.findall(time_pattern, body):
+            if algo == "mergesort_omp":
+                omp_times[threads].append(float(t))
+            elif algo == "mergesort_ff":
+                ff_times[threads].append(float(t))
 
-def print_speedup_tables(full_df):
-    """Print speedup tables in markdown format"""
-    for operation in ["compression", "decompression"]:
-        op_df = full_df[full_df["operation"] == operation]
-        pivot_df = op_df.pivot_table(
-            index="Dataset",
-            columns="nthreads",
-            values="speedup",
-            aggfunc="mean"
-        ).round(2)
-        transposed = pivot_df.T
-        print(f"\n### {operation.capitalize()} Speedup Table\n")
-        print(transposed.to_markdown(floatfmt=".2f"))
+# Compute averages
+seq_binary_avg = np.mean(seq_binary_times)
+seq_kway_avg = np.mean(seq_kway_times)
+best_seq = min(seq_binary_avg, seq_kway_avg)
 
-def plot_speedup_curves(full_df):
-    """Create interactive speedup plots with ideal line"""
-    fig = px.line(
-        full_df,
-        x="nthreads",
-        y="speedup",
-        markers=True,
-        color="Dataset",
-        facet_col="operation",
-        labels={"speedup": "Speedup", "nthreads": "Number of Threads"},
-        title="Compression and Decompression Speedup"
-    )
+omp_avg = {k: np.mean(v) for k, v in omp_times.items()}
+ff_avg = {k: np.mean(v) for k, v in ff_times.items()}
 
-    # Add ideal speedup line
-    max_threads = full_df["nthreads"].max()
-    fig.add_shape(
-        type="line",
-        x0=1, y0=1,
-        x1=max_threads,
-        y1=max_threads,
-        line=dict(color="black", dash="dot"),
-        row="all", col="all"
-    )
-    line_ticks = list([2**i for i in range(2,7)])
-    for i in line_ticks:
-        fig.add_vline(x=i, line=dict(color="lightgray", dash="dot"))
-    current_ticks = list(set(full_df["nthreads"]))
+omp_speedup = {k: best_seq / v for k, v in omp_avg.items()}
+ff_speedup = {k: best_seq / v for k, v in ff_avg.items()}
 
-    combined_ticks = sorted(set((current_ticks) + line_ticks))
-    fig.update_layout()
-    fig.update_xaxes(tickvals=combined_ticks)
-    fig.show()
+all_threads = sorted(set(omp_speedup.keys()) | set(ff_speedup.keys()))
 
-def main():
-    # Load and process data
-    full_df = load_and_preprocess_data()
+# === Plot 1: Combined Speedup Plot ===
+fig_speedup = go.Figure()
 
-    # Generate outputs
-    print_speedup_tables(full_df)
-    plot_speedup_curves(full_df)
+fig_speedup.add_trace(go.Scatter(
+    x=all_threads,
+    y=[omp_speedup.get(k, None) for k in all_threads],
+    mode='lines+markers',
+    name='OMP',
+    line=dict(color='blue')
+))
 
-if __name__ == "__main__":
-    main()
+fig_speedup.add_trace(go.Scatter(
+    x=all_threads,
+    y=[ff_speedup.get(k, None) for k in all_threads],
+    mode='lines+markers',
+    name='FastFlow',
+    line=dict(color='orange')
+))
+
+fig_speedup.add_trace(go.Scatter(
+    x=all_threads,
+    y=all_threads,
+    mode='lines',
+    name='Ideal Speedup',
+    line=dict(color='gray', dash='dash')
+))
+
+fig_speedup.update_layout(
+    title="Speedup vs Best Sequential (OMP vs FastFlow)",
+    xaxis_title="Number of Threads",
+    yaxis_title="Speedup",
+    template="plotly_white"
+)
+
+fig_speedup.show()
+
+# === Plot 2: Binary vs K-Way Merge Raw Times ===
+fig_seq = go.Figure(data=[
+    go.Bar(name='Binary Merge', x=['Binary'], y=[seq_binary_avg], marker_color='blue'),
+    go.Bar(name='K-Way Merge', x=['K-Way'], y=[seq_kway_avg], marker_color='green')
+])
+
+fig_seq.update_layout(
+    title="Sequential Merge Times: Binary vs K-Way",
+    yaxis_title="Time (s)",
+    template="plotly_white"
+)
+
+fig_seq.show()

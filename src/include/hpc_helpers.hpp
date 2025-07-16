@@ -26,13 +26,13 @@
     #define TIMERSTOP(label)                                                   \
         b##label = std::chrono::system_clock::now();                           \
         std::chrono::duration<double> delta##label = b##label-a##label;        \
-        std::cerr << "# elapsed time ("<< #label <<"): "                       \
+        std::cout << "# elapsed time ("<< #label <<"): "                       \
                   << delta##label.count()  << "s" << std::endl;
 
 #define TIMERSUM(label1, label2)				                               \
 	    std::chrono::duration<double> s##label1##label2 =                      \
 		                                         delta##label1+delta##label2;  \
-        std::cerr << "# elapsed time (" << #label1 << "+" << #label2 <<"): "   \
+        std::cout << "# elapsed time (" << #label1 << "+" << #label2 <<"): "   \
 		                    << s##label1##label2.count() << "s" << std::endl;
 
 #else
@@ -40,11 +40,11 @@
             cudaEventRecord(stop##label, 0);                                   \
             cudaEventSynchronize(stop##label);                                 \
             cudaEventElapsedTime(&time##label, start##label, stop##label);     \
-            std::cerr << "TIMING: " << time##label << " ms (" << #label << ")" \
+            std::cout << "TIMING: " << time##label << " ms (" << #label << ")" \
                       << std::endl;
 
 #define TIMERSUM(label1, label2)				                               \
-        std::cerr << "(" << #label1 << "+" << #label2 <<"): "                  \
+        std::cout << "(" << #label1 << "+" << #label2 <<"): "                  \
 		          << (time##label1 + time##label2) << "ms" << std::endl;
 
 #endif
