@@ -53,8 +53,8 @@ static ssize_t appendToFile(int fd, Container&& records) {
     }
 
     size_t batch_size = 0;
-    for (const auto& record : records)
-        batch_size += sizeof(record.key) + sizeof(record.len) + record.len;
+    for (const Record* record : records)
+        batch_size += sizeof(record->key) + sizeof(record->len) + record->len;
 
     size_t new_size = current_size + batch_size;
     if (ftruncate(fd, new_size) != 0) {
@@ -75,73 +75,24 @@ static ssize_t appendToFile(int fd, Container&& records) {
     char* out = static_cast<char*>(map_ptr) + delta;
     size_t offset = 0;
 
-    for (const auto& record : records) {
-        memcpy(out + offset, &record.key, sizeof(record.key));
-        offset += sizeof(record.key);
+    for (const Record* record : records) {
+        std::memcpy(out + offset, &record->key, sizeof(record->key));
+        offset += sizeof(record->key);
 
-        memcpy(out + offset, &record.len, sizeof(record.len));
-        offset += sizeof(record.len);
+        std::memcpy(out + offset, &record->len, sizeof(record->len));
+        offset += sizeof(record->len);
 
-        memcpy(out + offset, record.rpayload.get(), record.len);
-        offset += record.len;
+        std::memcpy(out + offset, record->payload(), record->len);
+        offset += record->len;
     }
 
-    if (msync(map_ptr, map_len, MS_SYNC) != 0)
-        std::cerr << "msync failed: " << strerror(errno) << std::endl;
-
-
-    if (munmap(map_ptr, map_len) != 0) {
-        std::cerr << "munmap failed: " << strerror(errno) << std::endl;
-        exit(EXIT_FAILURE);
-    }
+    msync(map_ptr, map_len, MS_SYNC);
+    munmap(map_ptr, map_len);
 
     records.clear();
-
     return static_cast<ssize_t>(batch_size);
 }
 
-static ssize_t appendRecordToFile(const std::string& filename, Record record) {
-    int fd = open(filename.c_str(), O_WRONLY  | O_CREAT | O_APPEND, 0666);
-
-    if (fd < 0) {
-        if (errno == EEXIST)
-            fd = open(filename.c_str(), O_WRONLY  | O_APPEND);
-
-        else {
-            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
-            exit(-1);
-        }
-    }
-    ssize_t bytes_written = 0;
-    if ((bytes_written = write(fd, &record.key, sizeof(record.key))) < 0) exit(-1);
-    if ((bytes_written += write(fd, &record.len, sizeof(record.len))) < 0) exit(-1);
-    if ((bytes_written += write(fd, record.rpayload.get(), record.len)) < 0) exit(-1);
-    close(fd);
-    return bytes_written;
-}
-
-template<typename Container>
-static ssize_t appendRecordsToFile(const std::string& filename, Container records) {
-    int fd = open(filename.c_str(), O_WRONLY  | O_APPEND | O_CREAT, 0666);
-
-    if (fd < 0) {
-        if (errno == EEXIST)
-            fd = open(filename.c_str(), O_WRONLY  | O_APPEND);
-
-        else {
-            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
-            exit(-1);
-        }
-    }
-    ssize_t bytes_written = 0;
-    for (auto record: records) {
-        if ((bytes_written += write(fd, &record.key, sizeof(record.key))) < 0) exit(-1);
-        if ((bytes_written += write(fd, &record.len, sizeof(record.len))) < 0) exit(-1);
-        if ((bytes_written += write(fd, record.rpayload, record.len)) < 0) exit(-1);
-    }
-    close(fd);
-    return bytes_written;
-}
 
 
 /**
@@ -155,7 +106,8 @@ static ssize_t appendRecordsToFile(const std::string& filename, Container record
  * @return The number of bytes read from the file.
  */
 template<typename Container>
-static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
+static size_t readRecordsFromFile(const std::string& filename, Container& records,
+                                size_t offset, size_t max_mem, MemoryArena& arena) {
     constexpr size_t kInitialBufSize = 64 * 1024;
 
     int fp = open(filename.c_str(), O_RDONLY);
@@ -200,27 +152,25 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
             const char* base = read_buf.data() + buffer_offset;
             uint64_t key = *reinterpret_cast<const uint64_t*>(base);
             uint32_t len = *reinterpret_cast<const uint32_t*>(base + sizeof(uint64_t));
+            size_t record_size = sizeof(Record) + len;
 
-            size_t record_size = sizeof(uint64_t) + sizeof(uint32_t) + static_cast<size_t>(len);
-
-            if (buffer_offset + record_size > bytes_in_buffer || total_bytes_read + record_size > max_mem)
+            if (buffer_offset + record_size > bytes_in_buffer ||
+                total_bytes_read + record_size > max_mem)
                 goto finish;
 
-            Record rec;
-            rec.key = key;
-            rec.len = len;
-            rec.rpayload = std::make_unique<char[]>(len);
-            std::memcpy(rec.rpayload.get(), base + sizeof(uint64_t) + sizeof(uint32_t), len);
+            void* mem = arena.allocate(record_size, alignof(Record));
+            Record* rec = new (mem) Record{key, len};
+            std::memcpy(rec->payload(), base + sizeof(uint64_t) + sizeof(uint32_t), len);
 
             if constexpr (
-                std::is_same_v<Container, std::vector<Record>> ||
-                std::is_same_v<Container, std::deque<Record>> ||
-                std::is_same_v<Container, ArenaDeque<Record>> ||
-                std::is_same_v<Container, ArenaVector<Record>>
+                std::is_same_v<Container, std::vector<Record*>> ||
+                std::is_same_v<Container, std::deque<Record*>> ||
+                std::is_same_v<Container, ArenaDeque<_Record*>> ||
+                std::is_same_v<Container, ArenaVector<_Record*>>
             ) {
-                records.push_back(std::move(rec));
+                records.push_back(rec);
             } else {
-                records.push(std::move(rec));
+                records.push(rec);
             }
 
             buffer_offset += record_size;
@@ -232,5 +182,29 @@ finish:
     close(fp);
     return total_bytes_read;
 }
+
+template<typename Container>
+static ssize_t appendRecordsToFile(const std::string& filename, Container records) {
+    int fd = open(filename.c_str(), O_WRONLY  | O_APPEND | O_CREAT, 0666);
+
+    if (fd < 0) {
+        if (errno == EEXIST)
+            fd = open(filename.c_str(), O_WRONLY  | O_APPEND);
+
+        else {
+            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
+            exit(-1);
+        }
+    }
+    ssize_t bytes_written = 0;
+    for (auto record: records) {
+        if ((bytes_written += write(fd, &record.key, sizeof(record.key))) < 0) exit(-1);
+        if ((bytes_written += write(fd, &record.len, sizeof(record.len))) < 0) exit(-1);
+        if ((bytes_written += write(fd, record.rpayload, record.len)) < 0) exit(-1);
+    }
+    close(fd);
+    return bytes_written;
+}
+
 
 #endif // _FILESYSTEM_HPP

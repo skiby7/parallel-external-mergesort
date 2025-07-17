@@ -19,6 +19,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include "arena.hpp"
 #include "config.hpp"
 #include "feistel.hpp"
 #include "record.hpp"
@@ -45,23 +46,28 @@ static void generateFile(std::string filename) {
         }
     }
 
-    Record record;
-    ArenaDeque<Record> records;
+
+    MemoryArena records_arena(MAX_MEMORY);
+    ArenaDeque<Record*> records((ArenaAllocator<Record*>(&records_arena)));
+    Record* rec = new (records_arena.allocate(sizeof(Record), alignof(Record))) Record();
     size_t size = 0;
+    char* payload = new char[RECORD_SIZE];
 
     for (size_t i = 0; i < ARRAY_SIZE; i++) {
-        record.key = feistel_encrypt((uint32_t)i, 0xDEADBEEF, ROUNDS);
-        record.len = rand() % (RECORD_SIZE - 8) + 8;
-        record.rpayload = std::make_unique<char[]>(record.len);
-        for (size_t j = 0; j < record.len; j++)
-            record.rpayload[j] = feistel_encrypt(j + i, 0x01, 1) & 0xFF;
+        rec->key = feistel_encrypt((uint32_t)i, 0xDEADBEEF, ROUNDS);
+        rec->len = rand() % (RECORD_SIZE - 8) + 8;
+        for (size_t j = 0; j < rec->len; j++)
+            payload[j] = feistel_encrypt(j + i, 0x01, 1) & 0xFF;
+        std::memcpy(rec->payload(), payload, rec->len);
 
-        size += sizeof(record) + record.len;
-        records.push_back(record);
+        size += sizeof(*rec) + rec->len;
+        records.push_back(rec);
 
         if (size > MAX_MEMORY) {
             size = 0;
             appendToFile(fd, std::move(records));
+            records.clear();
+            records_arena.reset();
         }
 
         if (i % (ARRAY_SIZE / 100) == 0 || i == ARRAY_SIZE - 1) {
@@ -73,6 +79,9 @@ static void generateFile(std::string filename) {
     if (!records.empty())
         appendToFile(fd, std::move(records));
 
+    records.clear();
+    records_arena.reset();
+    delete[] payload;
     printf("\rProgress: 100%%\n");
     close(fd);
 }
