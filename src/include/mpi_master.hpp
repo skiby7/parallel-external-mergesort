@@ -15,17 +15,18 @@
 #include <fcntl.h>
 #include <mpi.h>
 
-
+/**
+ * TODO:
+ *   - Check this function
+ *   - Receive the sorted files from the workers flushing the buffer to a single file for each worker
+ *   - Merge the sorted files into a single file using OMP
+ */
 static void master(const std::string& filename, int world_size) {
     std::filesystem::path p(filename);
     std::string run_prefix = p.parent_path().string() + "/run#";
     std::string merge_prefix = p.parent_path().string() + "/merge#";
     std::string output_file = p.parent_path().string() + "/output.dat";
-    int fd = open(filename.c_str(), O_RDONLY);
-    if (fd < 0) {
-        std::cerr << "Error opening file" << std::endl;
-        MPI_Abort(MPI_COMM_WORLD, 1);
-    }
+    int fd = openFile(filename);
 
     std::atomic<bool> sending_done{false};
     std::atomic<int> workers_done{0};
@@ -120,16 +121,7 @@ static void master(const std::string& filename, int world_size) {
                 MPI_Recv(result.data(), result_size, MPI_CHAR, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
                 std::cout << "[Master] Received sorted chunk of " << result_size << " bytes from worker " << src << std::endl;
                 std::string fname = run_prefix + generateUUID();
-                int fd = open(fname.c_str(), O_WRONLY  | O_APPEND | O_CREAT, 0666);
-                if (fd < 0) {
-                    if (errno == EEXIST)
-                        fd = open(fname.c_str(), O_WRONLY  | O_APPEND);
-
-                    else {
-                        std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
-                        exit(-1);
-                    }
-                }
+                int fd = openFile(fname, true);
                 write(fd, result.data(), result_size);
                 close(fd);
             }

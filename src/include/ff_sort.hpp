@@ -58,11 +58,7 @@ struct Master : ff::ff_monode_t<work_t> {
         size_t file_size = getFileSize(filename);
         size_t chunk_size = file_size / (nthreads * nthreads);
 
-        int fd = open(filename.c_str(), O_RDONLY);
-        if (fd < 0) {
-            std::cerr << "Error opening file: " << strerror(errno) << std::endl;
-            return;
-        }
+        int fd = openFile(filename);
 
         std::vector<char> buffer(MAX_MEMORY / nthreads);
         size_t buffer_offset = 0;

@@ -68,16 +68,7 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
 
     bool use_b1 = false;
 
-    int fp = open(output_filename.c_str(), O_RDWR | O_CREAT, 0666);
-    if (fp < 0) {
-        if (errno == EEXIST)
-            fp = open(output_filename.c_str(), O_RDWR);
-        else {
-            std::cerr << "Error opening file for writing: " << output_filename
-                      << " " << strerror(errno) << std::endl;
-            exit(-1);
-        }
-    }
+    int fd = openFile(output_filename);
 
     // Initial buffer fills
     bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
@@ -112,19 +103,19 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
         }
 
         if (out_buf_size >= usable_mem) {
-            bytes_written += appendToFile(fp, std::move(output_buffer));
+            bytes_written += appendToFile(fd, std::move(output_buffer));
             out_buf_size = 0;
             output_buffer.clear();
         }
     }
 
     if (!output_buffer.empty())
-        bytes_written += appendToFile(fp, std::move(output_buffer));
+        bytes_written += appendToFile(fd, std::move(output_buffer));
 
 
     deleteFile(file1.c_str());
     deleteFile(file2.c_str());
-    close(fp);
+    close(fd);
 }
 
 struct BufferState {
@@ -270,15 +261,7 @@ static void genSequenceFiles(
 
     while (bytes_remaining > 0 || !heap.empty() || !unsorted.empty()) { // I have to process all the bytes in the file
         std::string output_filename = output_filename_prefix + std::to_string(run);
-        fd = open(output_filename.c_str(), O_RDWR | O_CREAT, 0666);
-        if (fd < 0) {
-            if (errno == EEXIST)
-                fd = open(output_filename.c_str(), O_RDWR);
-            else {
-                std::cerr << "Error opening file for writing: " << output_filename << " " << strerror(errno) << std::endl;
-                exit(-1);
-            }
-        }
+        fd = openFile(output_filename);
         bytes_remaining = bytes_to_process - bytes_read;
         while (!heap.empty()) { // A run is complete when the heap is empty
             Record record = heap.top();
