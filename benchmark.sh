@@ -13,24 +13,38 @@ if [ -z "$INPUT_FILE" ]; then
 fi
 OUTPUT_FILE=$(dirname $INPUT_FILE)/output.dat
 FILESIZE=$(stat -c%s $INPUT_FILE)
-HALF_FILESIZE=$((FILESIZE/2))
+ONE_THIRD_FILESIZE=$((FILESIZE/3)) # Simulating memory constraints
 AVAIL_MEM=$(free -b | awk '/Mem:/ { print $7 }')
-MAX_MEMORY=$((32 * 1024 * 1024 * 1024))
+MAX_MEMORY=$((32 * 1024 * 1024 * 1024)) # 32GB
 USABLE_MEM=$(
-  echo "$HALF_FILESIZE $AVAIL_MEM $MAX_MEMORY" |
+  echo "$ONE_THIRD_FILESIZE $AVAIL_MEM $MAX_MEMORY" |
   awk '{ min = $1; for (i = 2; i <= NF; i++) if ($i < min) min = $i; print min }'
 )
 LOG_FILE=run_$(date +%s).log
+# THREAD_COUNTS=(
+#     4
+#     8
+#     12
+#     16
+#     20
+#     32
+#     48
+#     64
+#     80
+# )
+NRUNS=1
 THREAD_COUNTS=(
+    2
     4
+    6
     8
+    10
     12
     16
     20
+    24
+    28
     32
-    48
-    64
-    80
 )
 mkdir -p results
 make -j
@@ -42,12 +56,12 @@ run_parallel() {
     do
         echo "#################################" | tee -a results/$LOG_FILE
         echo -e "(nthreads=$i, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
-        for j in {1..3}
+        for j in {1..$}
         do
             ./mergesort_omp -t $i -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
-            /bin/rm /tmp/output.dat
+            /bin/rm $OUTPUT_FILE
             ./mergesort_ff -t $i -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
-            /bin/rm /tmp/output.dat
+            /bin/rm $OUTPUT_FILE
         done
     done
 }
@@ -55,18 +69,18 @@ run_parallel() {
 run_seq() {
     echo "#################################" | tee -a results/$LOG_FILE
     echo -e "(sequential binary merge, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
-    for j in {1..3}
+    for j in {1..$}
     do
         ./mergesort_seq -k -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
-        /bin/rm /tmp/output.dat
+        /bin/rm $OUTPUT_FILE
     done
 
     echo "#################################" | tee -a results/$LOG_FILE
     echo -e "(sequential kway merge, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
-    for j in {1..3}
+    for j in {1..$NRUNS}
     do
         ./mergesort_seq -k -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
-        /bin/rm /tmp/output.dat
+        /bin/rm $OUTPUT_FILE
     done
 }
 
