@@ -3,6 +3,7 @@
 
 #include "config.hpp"
 #include "record.hpp"
+#include "sorting.hpp"
 #include <iostream>
 #include <errno.h>
 #include <dirent.h>
@@ -35,6 +36,21 @@ static bool deleteFile(const char* filename) {
     }
 }
 
+static int openFile(const std::string& filename, bool append = false) {
+    int fd = open(filename.c_str(), O_RDWR | O_CREAT | (append ? O_APPEND : 0), 0666);
+    if (fd < 0) {
+        if (errno == EEXIST)
+            fd = open(filename.c_str(), O_RDWR | (append ? O_APPEND : 0));
+        else {
+            std::cerr << "Error opening file for writing: " << filename
+                      << " " << strerror(errno) << std::endl;
+            exit(-1);
+        }
+    }
+    return fd;
+}
+
+
 /**
  * This function appends a list of records to a file using mmap,
  * returning the bytes written. Also, it clears the records deque before returning.
@@ -43,7 +59,8 @@ static bool deleteFile(const char* filename) {
  * @param records The records to append.
  * @return The number of bytes written.
  */
-static ssize_t appendToFile(int fd, std::deque<Record>&& records) {
+template<typename Container>
+static ssize_t appendToFile(int fd, Container&& records) {
     size_t page_size = sysconf(_SC_PAGE_SIZE);
 
     off_t current_size = lseek(fd, 0, SEEK_END);
@@ -95,23 +112,14 @@ static ssize_t appendToFile(int fd, std::deque<Record>&& records) {
         exit(EXIT_FAILURE);
     }
 
-    records.clear();
+    if (!std::is_same_v<Container, std::priority_queue<Record, std::vector<Record>, RecordComparator>>)
+        records.clear();
 
     return static_cast<ssize_t>(batch_size);
 }
 
 static ssize_t appendRecordToFile(const std::string& filename, Record record) {
-    int fd = open(filename.c_str(), O_WRONLY  | O_CREAT | O_APPEND, 0666);
-
-    if (fd < 0) {
-        if (errno == EEXIST)
-            fd = open(filename.c_str(), O_WRONLY  | O_APPEND);
-
-        else {
-            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
-            exit(-1);
-        }
-    }
+    int fd = openFile(filename, true);
     ssize_t bytes_written = 0;
     if ((bytes_written = write(fd, &record.key, sizeof(record.key))) < 0) exit(-1);
     if ((bytes_written += write(fd, &record.len, sizeof(record.len))) < 0) exit(-1);
@@ -122,17 +130,7 @@ static ssize_t appendRecordToFile(const std::string& filename, Record record) {
 
 template<typename Container>
 static ssize_t appendRecordsToFile(const std::string& filename, Container records) {
-    int fd = open(filename.c_str(), O_WRONLY  | O_APPEND | O_CREAT, 0666);
-
-    if (fd < 0) {
-        if (errno == EEXIST)
-            fd = open(filename.c_str(), O_WRONLY  | O_APPEND);
-
-        else {
-            std::cerr << "Error opening file for writing: " << filename << " " << strerror(errno) << std::endl;
-            exit(-1);
-        }
-    }
+    int fd = openFile(filename, true);
     ssize_t bytes_written = 0;
     for (auto record: records) {
         if ((bytes_written += write(fd, &record.key, sizeof(record.key))) < 0) exit(-1);
@@ -160,19 +158,15 @@ template<typename Container>
 static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
     constexpr size_t kInitialBufSize = 64 * 1024;
 
-    int fp = open(filename.c_str(), O_RDONLY);
-    if (fp < 0) {
-        std::cerr << "Error opening file for reading: " << filename << " " << strerror(errno) << std::endl;
-        exit(EXIT_FAILURE);
-    }
+    int fd = openFile(filename);
 
-    if (lseek(fp, static_cast<off_t>(offset), SEEK_SET) < 0) {
+    if (lseek(fd, static_cast<off_t>(offset), SEEK_SET) < 0) {
         std::cerr << "lseek failed: " << strerror(errno) << std::endl;
-        close(fp);
+        close(fd);
         exit(EXIT_FAILURE);
     }
 
-    std::vector<char> read_buf(std::max(kInitialBufSize, max_mem));
+    std::vector<char> read_buf(std::min(kInitialBufSize, max_mem));
     size_t bytes_in_buffer = 0;
     size_t buffer_offset = 0;
     size_t total_bytes_read = 0;
@@ -187,10 +181,10 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
         }
         buffer_offset = 0;
 
-        ssize_t read_bytes = read(fp, read_buf.data() + bytes_in_buffer, read_buf.size() - bytes_in_buffer);
+        ssize_t read_bytes = read(fd, read_buf.data() + bytes_in_buffer, read_buf.size() - bytes_in_buffer);
         if (read_bytes < 0) {
             std::cerr << "Read error: " << strerror(errno) << std::endl;
-            close(fp);
+            close(fd);
             exit(EXIT_FAILURE);
         } else if (read_bytes == 0) {
             break; // EOF
@@ -228,7 +222,7 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
     }
 
 finish:
-    close(fp);
+    close(fd);
     return total_bytes_read;
 }
 

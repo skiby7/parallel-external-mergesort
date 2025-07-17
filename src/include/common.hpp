@@ -89,11 +89,7 @@ static inline bool checkSorted(std::vector<unsigned long>& array) {
 }
 
 static bool checkSortedFile(const std::string& filename) {
-    int fd = open(filename.c_str(), O_RDONLY);
-    if (fd < 0) {
-        std::cerr << "Error opening file for reading: " << filename << " " << strerror(errno) << std::endl;
-        exit(-1);
-    }
+    int fd = openFile(filename);
     ssize_t read_size = 0;
     unsigned long key = 0;
     uint32_t len = 0;
