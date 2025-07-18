@@ -2,37 +2,23 @@
 #define _SORTING_HPP
 
 #include "common.hpp"
-#include "config.hpp"
-#include "filesystem.hpp"
 #include <algorithm>
-#include <cstring>
-#include <deque>
-#include <fcntl.h>
-#include <iostream>
-#include <string>
 #include <cassert>
 #include <cstddef>
+#include <cstring>
+#include <deque>
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <iostream>
+#include <omp.h>
 #include <queue>
+#include <string>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
-#include <errno.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <omp.h>
-#include <sys/mman.h>
-
-struct RecordComparator {
-    bool operator()(Record a, Record b){
-        return (a.key > b.key);
-    }
-};
-
-struct PairRecordComparator {
-    bool operator()(const std::pair<Record, size_t>& a, const std::pair<Record, size_t>& b) const {
-        return a.first > b.first;
-    }
-};
 
 static inline std::string removeSubstring(std::string str, const std::string& toRemove) {
     size_t pos = str.find(toRemove);

@@ -1,6 +1,5 @@
 #include <vector>
 #include "include/cmdline.hpp"
-#include "include/common.hpp"
 #include "include/hpc_helpers.hpp"
 #include "include/ff_sort.hpp"
 #include <ff/ff.hpp>

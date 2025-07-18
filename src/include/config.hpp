@@ -1,6 +1,8 @@
 #ifndef _CONFIG_HPP
 #define _CONFIG_HPP
 #include <cstdint>
+#include <linux/limits.h>
+#include <sys/stat.h>
 #include <thread>
 
 static unsigned int NTHREADS = std::thread::hardware_concurrency();
@@ -10,5 +12,6 @@ static unsigned int ROUNDS = 4;
 static unsigned int SORT_THRESHOLD = 64;
 static uint64_t MAX_MEMORY = 1ULL << 33; // 8 GB
 static bool KWAY_MERGE = false;
+static char TMP_LOCATION[PATH_MAX+1] = "/tmp";
 
 #endif // !_CONFIG_HPP

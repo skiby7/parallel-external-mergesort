@@ -2,6 +2,7 @@
 #define _CMDLINE_HPP
 
 #include <cstdio>
+#include <linux/limits.h>
 #include <string>
 #include <cstring>
 #include <cstdlib>
@@ -17,6 +18,7 @@ static inline void usage(const char *argv0) {
     std::printf(" -t T: number of threads (default=%d)\n", NTHREADS);
     std::printf(" -k: use k-way merge in the sequential version (default=%d)\n", KWAY_MERGE ? 1 :0);
     std::printf(" -m M: set the max memory usage (default=%ld)\n", MAX_MEMORY);
+    std::printf(" -p string: set the tmp location for the worker nodes (MPI) (default=%s)\n", TMP_LOCATION);
     std::printf("--------------------\n");
     /**
      * These options are still relevant for the generation of the file,
@@ -42,7 +44,7 @@ static bool isNumber(const char* s, long &n) {
 
 static inline int parseCommandLine(int argc, char *argv[]) {
     extern char *optarg;
-    const std::string optstr = "r:s:t:d:m:k";
+    const std::string optstr = "r:s:t:d:m:p:k";
     long opt, start = 1;
 
     while ((opt = getopt(argc, argv, optstr.c_str())) != -1) {
@@ -50,6 +52,10 @@ static inline int parseCommandLine(int argc, char *argv[]) {
             case 'k': {
                 KWAY_MERGE = true;
                 start += 1;
+            } break;
+            case 'p': {
+                strncpy(TMP_LOCATION, optarg, PATH_MAX);
+                start += 2;
             } break;
             case 's': {
                 long s = 0;

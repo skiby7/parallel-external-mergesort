@@ -1,8 +1,8 @@
 #ifndef _FF_SORT_HPP
 #define _FF_SORT_HPP
+
 #include "common.hpp"
 #include "config.hpp"
-#include "filesystem.hpp"
 #include "sorting.hpp"
 #include <cmath>
 #include <cstddef>

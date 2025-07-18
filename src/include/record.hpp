@@ -1,6 +1,7 @@
 
 #ifndef _RECORD_HPP
 #define _RECORD_HPP
+
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -58,5 +59,17 @@ typedef struct _Record {
     bool operator > (const _Record &a) const { return key > a.key; }
 
 } Record;
+
+struct RecordComparator {
+    bool operator()(Record a, Record b){
+        return (a.key > b.key);
+    }
+};
+
+struct PairRecordComparator {
+    bool operator()(const std::pair<Record, size_t>& a, const std::pair<Record, size_t>& b) const {
+        return a.first > b.first;
+    }
+};
 
 #endif // _RECORD_HPP

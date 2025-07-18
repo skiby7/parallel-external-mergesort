@@ -1,24 +1,20 @@
 #ifndef _MPI_WORKER_HPP
 #define _MPI_WORKER_HPP
-#include <deque>
-#include <iostream>
-#include "config.hpp"
+
 #include "common.hpp"
-#include "filesystem.hpp"
+#include "config.hpp"
 #include "omp_sort.hpp"
 #include "record.hpp"
-#include "sorting.hpp"
-#include <fstream>
-#include <queue>
-#include <string>
-#include <vector>
-#include <cstring>
-#include <filesystem>
 #include <cstdint>
 #include <cstdlib>
-#include <unistd.h>
+#include <cstring>
 #include <fcntl.h>
+#include <filesystem>
 #include <mpi.h>
+#include <queue>
+#include <string>
+#include <unistd.h>
+#include <vector>
 
 static void worker(std::string tmp_location) {
     int fd = 0, done = 0;
@@ -59,7 +55,7 @@ static void worker(std::string tmp_location) {
         if (accumulated_size >= MAX_MEMORY) {
             std::string file = run_prefix + generateUUID();
             fd = openFile(file);
-            appendToFile(fd, std::move(records)); // This empties the heap
+            appendToFile(fd, std::move(records), accumulated_size); // This empties the heap
             close(fd);
             accumulated_size = 0;
         }
@@ -68,8 +64,9 @@ static void worker(std::string tmp_location) {
     if (!records.empty()) {
         std::string file = run_prefix + generateUUID();
         int fd = openFile(file);
-        appendToFile(fd, std::move(records));
+        appendToFile(fd, std::move(records), accumulated_size);
         close(fd);
+        accumulated_size = 0;
     }
     ompMerge(run_prefix, merge_prefix, output_file);
     fd = openFile(output_file);
