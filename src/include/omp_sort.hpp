@@ -1,15 +1,14 @@
 #ifndef _OMP_SORT_HPP
 #define _OMP_SORT_HPP
 
+#include "common.hpp"
+#include "config.hpp"
+#include "sorting.hpp"
 #include <omp.h>
 #include <string>
 #include <vector>
-#include "filesystem.hpp"
-#include "config.hpp"
-#include "common.hpp"
-#include "sorting.hpp"
 
-void ompMerge(const std::string& run_prefix, const std::string& merge_prefix, const std::string& output_file) {
+static void ompMerge(const std::string& run_prefix, const std::string& merge_prefix, const std::string& output_file) {
     std::vector<std::string> sequences = findFiles(run_prefix);
     std::vector<std::vector<std::string>> levels;
 

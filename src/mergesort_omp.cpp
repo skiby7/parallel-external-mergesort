@@ -9,7 +9,6 @@
 #include "include/cmdline.hpp"
 #include "include/common.hpp"
 #include "include/config.hpp"
-#include "include/filesystem.hpp"
 #include "include/hpc_helpers.hpp"
 #include "include/omp_sort.hpp"
 #include "include/sorting.hpp"
