@@ -32,7 +32,7 @@ LOG_FILE=run_$(date +%s).log
 #     64
 #     80
 # )
-NRUNS=1
+NRUNS=2
 THREAD_COUNTS=(
     2
     4
@@ -58,9 +58,9 @@ run_parallel() {
         echo -e "(nthreads=$i, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
         for j in {1..$}
         do
-            ./mergesort_omp -t $i -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
+            ./mergesort_omp -k -t $i -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
             /bin/rm $OUTPUT_FILE
-            ./mergesort_ff -t $i -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
+            ./mergesort_ff -k -t $i -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
             /bin/rm $OUTPUT_FILE
         done
     done
@@ -69,7 +69,7 @@ run_parallel() {
 run_seq() {
     echo "#################################" | tee -a results/$LOG_FILE
     echo -e "(sequential binary merge, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
-    for j in {1..$}
+    for j in {1..$NRUNS}
     do
         ./mergesort_seq -k -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
         /bin/rm $OUTPUT_FILE

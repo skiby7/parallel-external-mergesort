@@ -123,8 +123,12 @@ int main(int argc, char *argv[]) {
     std::string output_file = p.parent_path().string() + "/output.dat";
     TIMERSTART(mergesort_omp)
     computeChunksAndProcess(filename, omp_get_max_threads(), run_prefix);
-
     ompMerge(run_prefix, merge_prefix, output_file);
+    // if (KWAY_MERGE) {
+    //     ompMerge(run_prefix, merge_prefix, output_file);
+    // } else {
+    //     ompBinaryMerge(findFiles(run_prefix), merge_prefix, output_file);
+    // }
     TIMERSTOP(mergesort_omp)
 
     // assert(checkSortedFile(output_file));
