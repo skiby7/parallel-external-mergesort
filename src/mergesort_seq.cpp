@@ -4,6 +4,7 @@
 #include "include/sorting.hpp"
 #include <cassert>
 #include <cstdio>
+#include <iostream>
 #include <string>
 #include <sys/types.h>
 #include <vector>

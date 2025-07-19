@@ -226,7 +226,7 @@ static void genSequenceFiles(
     size_t max_memory,
     const std::string& output_filename_prefix
 ) {
-    size_t usable_mem = (max_memory * 18) / 30; // Leaving a 10% of space to read and write records and using half for the output buffer
+    size_t usable_mem = (max_memory * 8) / 10; // Leaving a 20% of space to the output buffer
     std::vector<Record> unsorted;
     std::deque<Record> output_buffer;
     size_t output_buffer_size = 0;
@@ -276,7 +276,7 @@ static void genSequenceFiles(
                 else heap.push(std::move(r));
             }
             buffer.clear();
-            if (output_buffer_size > usable_mem / 2) {
+            if (output_buffer_size > max_memory - usable_mem) {
                 io_offset += appendToFile(fd, std::move(output_buffer));
                 output_buffer.clear();
                 output_buffer_size = 0;
@@ -293,6 +293,52 @@ static void genSequenceFiles(
             output_buffer_size = 0;
         }
         close(fd);
+        run++;
+    }
+}
+
+/**
+ * This is a simple implementation that reads chunks of data fitting in max_memory,
+ * sorts them using std::sort, and flushes them to disk. It is compatible with the
+ * merge-based approach and produces sorted runs for external merge sort.
+ *
+ * @param input_filename The input file name.
+ * @param offset The offset to start reading from.
+ * @param bytes_to_process The number of bytes to process.
+ * @param max_memory The maximum memory to use.
+ * @param output_filename_prefix The prefix for the output file names.
+ */
+static void genSortedRunsWithSort(
+    const std::string& input_filename,
+    size_t offset,
+    size_t bytes_to_process,
+    size_t max_memory,
+    const std::string& output_filename_prefix
+) {
+    size_t usable_mem = (max_memory * 9) / 10; // Leave 10% for buffers, pointers, etc.
+    size_t bytes_read = 0;
+    size_t curr_offset = offset;
+    size_t run = 1;
+
+    while (bytes_read < bytes_to_process) {
+        std::vector<Record> buffer;
+        size_t chunk_size = std::min(usable_mem, bytes_to_process - bytes_read);
+        ssize_t actual_bytes_read = readRecordsFromFile(input_filename, buffer, curr_offset, chunk_size);
+
+        if (actual_bytes_read <= 0) break;
+
+        curr_offset += actual_bytes_read;
+        bytes_read += actual_bytes_read;
+
+        std::sort(buffer.begin(), buffer.end(), RecordComparator{});
+
+        std::string output_filename = output_filename_prefix + std::to_string(run);
+        int fd = openFile(output_filename);
+
+        // Reuse your existing appendToFile logic, or adapt to vector
+        appendToFile(fd, std::move(buffer));
+        close(fd);
+
         run++;
     }
 }

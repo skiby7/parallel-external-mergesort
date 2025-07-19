@@ -21,8 +21,7 @@ struct sort_task_t {
 };
 
 struct merge_task_t {
-    std::string file1;
-    std::string file2;
+    std::vector<std::string> files;
     std::string output;
     size_t memory;
 };
@@ -38,6 +37,7 @@ struct Master : ff::ff_monode_t<work_t> {
     size_t current_level;
     size_t submitted_sort_tasks;
     size_t merge_count;
+    size_t pending_merges;
     size_t expected_merges;
     size_t nthreads;
     std::string filename;
@@ -45,8 +45,8 @@ struct Master : ff::ff_monode_t<work_t> {
     std::string merge_prefix;
     std::string output_file;
     Master(std::string filename, std::string base_path) :
-        current_level(0), submitted_sort_tasks(0), merge_count(0),
-        nthreads(NTHREADS), filename(filename), run_prefix(base_path+"/run#"),
+        current_level(0), submitted_sort_tasks(0), merge_count(0), pending_merges(0),
+        expected_merges(0), nthreads(NTHREADS), filename(filename), run_prefix(base_path+"/run#"),
         merge_prefix(base_path+"/merge#"), output_file(base_path+"/output.dat") {}
 
     void kill_threads(size_t expected_merges) {
@@ -152,23 +152,27 @@ struct Master : ff::ff_monode_t<work_t> {
             if (submitted_sort_tasks == 0) {
                 std::vector<std::string> sequences = findFiles(run_prefix);
 
-                levels.push_back({});
-                if (sequences.size() % 2) {
-                    levels[0].push_back(sequences.back());
-                    sequences.pop_back();
-                }
+                const size_t group_size = (sequences.size() + nthreads - 1) / nthreads;
+                std::vector<std::string> level_0;
 
-                expected_merges = sequences.size() / 2;
-                // kill_threads(expected_merges);
-                for (size_t i = 0; i < sequences.size() - 1; i+=2) {
+                for (size_t i = 0; i < nthreads; ++i) {
+                    size_t start = i * group_size;
+                    if (start >= sequences.size()) break;
+                    size_t end = std::min(start + group_size, sequences.size());
+
+                    std::vector<std::string> group(sequences.begin() + start, sequences.begin() + end);
+                    if (group.empty()) continue;
+
                     std::string filename = merge_prefix + generateUUID();
                     ff_send_out(new work_t{nullptr, new merge_task_t{
-                        sequences[i],
-                        sequences[i + 1],
+                        group,
                         filename,
-                        MAX_MEMORY/nthreads}});
-                    levels[0].push_back(filename);
+                        MAX_MEMORY / nthreads
+                    }});
+                    level_0.push_back(filename);
                 }
+                expected_merges = level_0.size(); // Every thread merges a group
+                levels.push_back(std::move(level_0));
             }
             delete task->sort_task;
             delete task;
@@ -190,14 +194,16 @@ struct Master : ff::ff_monode_t<work_t> {
                 }
 
                 expected_merges = levels[current_level - 1].size() / 2;
-                // kill_threads(expected_merges);
+                std::vector<std::string> inputs;
                 for (size_t i = 0; i < levels[current_level - 1].size() - 1; i += 2) {
                     std::string filename = merge_prefix + generateUUID();
+                    inputs.push_back(levels[current_level - 1][i]);
+                    inputs.push_back(levels[current_level - 1][i + 1]);
                     ff_send_out(new work_t{nullptr, new merge_task_t{
-                        levels[current_level - 1][i],
-                        levels[current_level - 1][i + 1],
+                        std::move(inputs),
                         filename,
                         MAX_MEMORY/nthreads}});
+                    inputs.clear();
                     levels[current_level].push_back(filename);
                 }
                 merge_count = 0;
@@ -207,6 +213,7 @@ struct Master : ff::ff_monode_t<work_t> {
             delete task;
             return GO_ON;
         }
+
         return EOS;
     }
 };
@@ -226,11 +233,14 @@ struct WorkerNode : ff::ff_node_t<work_t> {
 
             ff_send_out(work);
         } else if (work->merge_task) {
-            mergeFiles(
-                work->merge_task->file1,
-                work->merge_task->file2,
-                work->merge_task->output,
-                work->merge_task->memory);
+            if (work->merge_task->files.size() == 2)
+                mergeFiles(
+                    work->merge_task->files[0],
+                    work->merge_task->files[1],
+                    work->merge_task->output,
+                    work->merge_task->memory);
+            else
+                kWayMergeFiles(work->merge_task->files, work->merge_task->output, work->merge_task->memory);
             ff_send_out(work);
         }
         return GO_ON;
