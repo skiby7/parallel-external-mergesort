@@ -284,7 +284,6 @@ static ssize_t appendRecordToFile(const std::string& filename, Record record) {
  */
 template<typename Container>
 static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
-    constexpr size_t kInitialBufSize = 64 * 1024;
 
     int fd = openFile(filename);
 
@@ -294,7 +293,7 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
         exit(EXIT_FAILURE);
     }
 
-    std::vector<char> read_buf(std::min(kInitialBufSize, max_mem));
+    std::vector<char> read_buf(max_mem);
     size_t bytes_in_buffer = 0;
     size_t buffer_offset = 0;
     size_t total_bytes_read = 0;
@@ -304,10 +303,8 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
             size_t remaining = bytes_in_buffer - buffer_offset;
             memmove(read_buf.data(), read_buf.data() + buffer_offset, remaining);
             bytes_in_buffer = remaining;
-        } else {
+        } else
             bytes_in_buffer = 0;
-        }
-        buffer_offset = 0;
 
         ssize_t read_bytes = read(fd, read_buf.data() + bytes_in_buffer, read_buf.size() - bytes_in_buffer);
         if (read_bytes < 0) {
