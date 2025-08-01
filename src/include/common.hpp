@@ -28,9 +28,10 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include <uuid/uuid.h>
 #include <vector>
-
+#include <random>
+#include <sstream>
+#include <iomanip>
 
 template<typename Container>
 static ssize_t appendToFile(int fd, Container&& records, ssize_t size = -1);
@@ -38,11 +39,30 @@ static int openFile(const std::string& filename, bool append = false);
 
 
 static std::string generateUUID() {
-    uuid_t uuid;
-    uuid_generate(uuid);
-    char uuid_str[37];
-    uuid_unparse(uuid, uuid_str);
-    return std::string(uuid_str);
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint32_t> dist32;
+    std::uniform_int_distribution<uint16_t> dist16;
+
+    uint32_t data1 = dist32(gen);
+    uint16_t data2 = dist16(gen);
+    uint16_t data3 = dist16(gen);
+    uint16_t data4 = dist16(gen);
+    uint64_t data5 = ((uint64_t)dist32(gen) << 32) | dist32(gen);
+
+    data3 = (data3 & 0x0FFF) | 0x4000;
+
+    data4 = (data4 & 0x3FFF) | 0x8000;
+
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0')
+        << std::setw(8) << data1 << "-"
+        << std::setw(4) << data2 << "-"
+        << std::setw(4) << data3 << "-"
+        << std::setw(4) << data4 << "-"
+        << std::setw(12) << (data5 & 0xFFFFFFFFFFFFULL);
+
+    return oss.str();
 }
 
 static void generateFile(std::string filename) {
