@@ -49,9 +49,9 @@ run_parallel() {
         for j in {1..$NRUNS}
         do
             $SRUN ./mergesort_omp -k -t $i -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
-            /bin/rm $OUTPUT_FILE
+            $SRUN /bin/rm $OUTPUT_FILE
             $SRUN ./mergesort_ff -k -t $i -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
-            /bin/rm $OUTPUT_FILE
+            $SRUN /bin/rm $OUTPUT_FILE
         done
     done
 }
@@ -62,7 +62,7 @@ run_seq() {
     for j in {1..$NRUNS}
     do
         $SRUN ./mergesort_seq -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
-        /bin/rm $OUTPUT_FILE
+        $SRUN /bin/rm $OUTPUT_FILE
     done
 
     echo "#################################" | tee -a results/$LOG_FILE
@@ -70,25 +70,33 @@ run_seq() {
     for j in {1..$NRUNS}
     do
         $SRUN ./mergesort_seq -k -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
-        /bin/rm $OUTPUT_FILE
+        $SRUN /bin/rm $OUTPUT_FILE
     done
 }
 
 run_mpi() {
-    if [[ -z "$SRUN" ]]
-    then
+    if [[ -z "$SRUN" ]]; then
         return 1
     fi
-    echo "#################################" | tee -a results/$LOG_FILE
-    for i in 1 2 4 8
-    do
-        SRUN=srun --nodes=$i --ntasks-per-node=1 --mpi=pimix
 
-        echo -e "(nnodes=$i, nthreads=$NPROCS max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
-        for j in {1..$NRUNS}
-        do
+    echo "#################################" | tee -a results/$LOG_FILE
+
+    WORKER_NODES=(node01 node02 node03 node04 node05 node06 node07)
+
+    for i in 1 2 4 8; do
+        # Build nodelist starting with node08
+        NODELIST="node08"
+        for ((n=0; n<i-1; n++)); do
+            NODELIST+=",${WORKER_NODES[n]}"
+        done
+
+        SRUN="srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
+
+        echo -e "(nnodes=$i, nthreads=$NPROCS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
+
+        for j in $(seq 1 $NRUNS); do
             $SRUN ./mergesort_mpi -t 16 -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
-            /bin/rm $OUTPUT_FILE
+            $SRUN /bin/rm -f $OUTPUT_FILE
         done
     done
 }
