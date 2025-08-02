@@ -53,10 +53,8 @@ static void worker(std::string tmp_location) {
         // as the master will only send MAX_MEMORY/2 bytes at a time
         if (accumulated_size >= MAX_MEMORY) {
             std::string file = run_prefix + generateUUID();
-            std::cout << "Bip" << std::endl;
             int fd = openFile(file);
             appendToFile(fd, std::move(records), accumulated_size); // This empties the heap
-            std::cout << "Bop" << std::endl;
             close(fd);
             accumulated_size = 0;
         }
