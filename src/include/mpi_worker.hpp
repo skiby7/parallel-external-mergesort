@@ -21,10 +21,9 @@ static void worker(std::string tmp_location) {
     size_t accumulated_size = 0, read_size = 0, offset = 0, size = 0;
     std::priority_queue<Record, std::vector<Record>, RecordComparator> records;
     std::vector<char> send_buf;
-    std::filesystem::path p(tmp_location);
-    std::string run_prefix = p.parent_path().string() + "/run#";
-    std::string merge_prefix = p.parent_path().string() + "/merge#";
-    std::string output_file = p.parent_path().string() + "/output.dat";
+    std::string run_prefix = tmp_location + "/run#";
+    std::string merge_prefix = tmp_location + "/merge#";
+    std::string output_file = tmp_location + "/output.dat";
     while (true) {
         MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         if (size == 0) break;
@@ -54,8 +53,10 @@ static void worker(std::string tmp_location) {
         // as the master will only send MAX_MEMORY/2 bytes at a time
         if (accumulated_size >= MAX_MEMORY) {
             std::string file = run_prefix + generateUUID();
-            fd = openFile(file);
+            std::cout << "Bip" << std::endl;
+            int fd = openFile(file);
             appendToFile(fd, std::move(records), accumulated_size); // This empties the heap
+            std::cout << "Bop" << std::endl;
             close(fd);
             accumulated_size = 0;
         }

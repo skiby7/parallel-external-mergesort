@@ -3,4 +3,8 @@ mergesort_seq
 mergesort_omp
 mergesort_ff
 mergesort_mpi
+mergesort_seq_debug
+mergesort_omp_debug
+mergesort_ff_debug
+mergesort_mpi_debug
 gen_file

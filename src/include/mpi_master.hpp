@@ -37,7 +37,7 @@ static void master(const std::string& filename, int world_size) {
     size_t buffer_offset = 0;
 
     std::vector<std::vector<char>> node_chunks(num_workers);
-
+    std::cout << "[Master] Starting main loop" << std::endl;
     while (true) {
         if (buffer_offset < bytes_in_buffer) {
             memmove(buffer.data(), buffer.data() + buffer_offset, bytes_in_buffer - buffer_offset);
@@ -66,8 +66,8 @@ static void master(const std::string& filename, int world_size) {
             std::vector<char> rec(rec_size);
             std::memcpy(rec.data() + bytes_in_buffer, &buffer[rec_start], rec_size);
             node++;
-            node_chunks[node].insert(node_chunks[node].end(), rec.begin(), rec.end());
             if (node == num_workers) node = 0;
+            node_chunks[node].insert(node_chunks[node].end(), rec.begin(), rec.end());
             buffer_offset += len;
         }
 
@@ -102,7 +102,7 @@ static void master(const std::string& filename, int world_size) {
             int src = status.MPI_SOURCE;
 
             if (result_size == 0) {
-                    workers_done.fetch_add(1);
+                workers_done.fetch_add(1);
                 continue;
             }
 
@@ -110,6 +110,7 @@ static void master(const std::string& filename, int world_size) {
             MPI_Recv(result.data(), result_size, MPI_CHAR, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             std::cout << "[Master] Received sorted chunk of " << result_size << " bytes from worker " << src << std::endl;
             std::string fname = run_prefix + std::to_string(src);
+            std::cout << run_prefix << std::endl;
             int fd = openFile(fname, true);
             write(fd, result.data(), result_size);
             close(fd);
@@ -119,7 +120,10 @@ static void master(const std::string& filename, int world_size) {
     /**
      * Only the master node access to the disk and merge the sorted chunks
      */
+
+    std::cout << "[Master] Starting merge" << std::endl;
     ompMerge(run_prefix, merge_prefix, output_file);
+    std::cout << "[Master] Merge complete" << std::endl;
 }
 
 #endif // _MPI_MASTER_HPP
