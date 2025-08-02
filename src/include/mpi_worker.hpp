@@ -24,6 +24,8 @@ static void worker(std::string tmp_location) {
     std::string run_prefix = tmp_location + "/run#";
     std::string merge_prefix = tmp_location + "/merge#";
     std::string output_file = tmp_location + "/output.dat";
+
+    std::cout << "[Worker] Starting main loop" << std::endl;
     while (true) {
         MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         if (size == 0) break;
