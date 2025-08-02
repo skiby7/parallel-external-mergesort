@@ -1,1 +1,6 @@
 perf.data*
+mergesort_seq
+mergesort_omp
+mergesort_ff
+mergesort_mpi
+gen_file

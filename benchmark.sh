@@ -16,7 +16,7 @@ fi
 OUTPUT_FILE=$(dirname $INPUT_FILE)/output.dat
 FILESIZE=$($SRUN stat -c%s $INPUT_FILE)
 ONE_THIRD_FILESIZE=$((FILESIZE/3)) # Simulating memory constraints
-AVAIL_MEM=$(free -b | awk '/Mem:/ { print $7 }')
+AVAIL_MEM=$($SRUN free -b | awk '/Mem:/ { print $7 }')
 MAX_MEMORY=$((32 * 1024 * 1024 * 1024)) # 32GB
 USABLE_MEM=$(
   echo "$ONE_THIRD_FILESIZE $AVAIL_MEM $MAX_MEMORY" |
