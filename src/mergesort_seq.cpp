@@ -52,7 +52,8 @@ int main(int argc, char *argv[]) {
     std::string merge_prefix = p.parent_path().string() + "/merge#";
     std::string output_file = p.parent_path().string() + "/output.dat";
     TIMERSTART(mergesort_seq)
-    genSequenceFiles(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
+    // genSequenceFiles(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
+    genSortedRunsWithSort(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
     std::vector<std::string> sequences = findFiles(run_prefix);
     if (sequences.size() == 1)
         rename(sequences[0].c_str(), output_file.c_str());

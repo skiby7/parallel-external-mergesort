@@ -85,7 +85,8 @@ void computeChunksAndProcess(const std::string& filename, size_t num_threads, co
                         std::string uuid = generateUUID();
                         #pragma omp task firstprivate(logical_start, size, uuid)
                         {
-                            genSequenceFiles(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
+                            // genSequenceFiles(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
+                            genSortedRunsWithSort(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
                         }
                         logical_start = logical_end;
                     }
@@ -101,7 +102,8 @@ void computeChunksAndProcess(const std::string& filename, size_t num_threads, co
                 std::string uuid = generateUUID();
                 #pragma omp task firstprivate(logical_start, size, uuid)
                 {
-                    genSequenceFiles(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
+                    // genSequenceFiles(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
+                    genSortedRunsWithSort(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
                 }
             }
 
