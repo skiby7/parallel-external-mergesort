@@ -224,12 +224,18 @@ struct WorkerNode : ff::ff_node_t<work_t> {
     WorkerNode(std::string base_path) : run_prefix(base_path+"/run#") {}
     work_t* svc(work_t* work) {
         if (work->sort_task) {
-            genSequenceFiles(
+            genSortedRunsWithSort(
                 work->sort_task->filename,
                 work->sort_task->start,
                 work->sort_task->size,
                 work->sort_task->memory,
                 run_prefix + generateUUID());
+            // genSequenceFiles(
+            //     work->sort_task->filename,
+            //     work->sort_task->start,
+            //     work->sort_task->size,
+            //     work->sort_task->memory,
+            //     run_prefix + generateUUID());
 
             ff_send_out(work);
         } else if (work->merge_task) {

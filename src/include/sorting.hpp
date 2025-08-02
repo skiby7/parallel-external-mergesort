@@ -2,6 +2,7 @@
 #define _SORTING_HPP
 
 #include "common.hpp"
+#include "hpc_helpers.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -276,6 +277,9 @@ static void genSequenceFiles(
                 else heap.push(std::move(r));
             }
             buffer.clear();
+            // std::cout << "Output buffer size: " << output_buffer_size << std::endl;
+            // std::cout << "Threshold: " << max_memory - usable_mem << std::endl;
+
             if (output_buffer_size > max_memory - usable_mem) {
                 io_offset += appendToFile(fd, std::move(output_buffer));
                 output_buffer.clear();

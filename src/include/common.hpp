@@ -326,7 +326,7 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
         } else
             bytes_in_buffer = 0;
 
-        ssize_t read_bytes = read(fd, read_buf.data() + bytes_in_buffer, 128);
+        ssize_t read_bytes = read(fd, read_buf.data() + bytes_in_buffer, read_buf.size() - bytes_in_buffer);
         if (read_bytes < 0) {
             std::cerr << "Read error: " << strerror(errno) << std::endl;
             close(fd);
