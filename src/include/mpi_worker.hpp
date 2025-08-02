@@ -28,7 +28,10 @@ static void worker(std::string tmp_location) {
     std::cout << "[Worker] Starting main loop" << std::endl;
     while (true) {
         MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        if (size == 0) break;
+        if (size == 0){
+            std::cout << "[Worker] Received termination signal" << std::endl;
+            break;
+        }
 
         std::vector<char> buf(size);
         MPI_Recv(buf.data(), size, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
