@@ -1,9 +1,0 @@
-
-#################################
-(sequential binary merge, max_mem=0)
-#################################
-(sequential kway merge, max_mem=0)
-# elapsed time (mergesort_seq): 0.000195429s
-#################################
-(nthreads=2, max_mem=0)
-# elapsed time (mergesort_omp): 0.000558682s
