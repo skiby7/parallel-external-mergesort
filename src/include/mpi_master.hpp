@@ -72,6 +72,7 @@ static void master(const std::string& filename, int world_size) {
         }
 
         // Send to workers. Starting from 1 because rank 0 is the master
+        std::cout << "Sending data to workers..." << std::endl;
         for (unsigned int node = 1; node <= num_workers; ++node) {
             std::vector<char> send_buf;
 
