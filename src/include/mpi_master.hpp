@@ -48,6 +48,7 @@ static void master(const std::string& filename, int world_size) {
         buffer_offset = 0;
 
         ssize_t bytes_read = read(fd, buffer.data() + bytes_in_buffer, buffer.size() - bytes_in_buffer);
+        std::cout << "[Master] Read " << bytes_read << " bytes" << std::endl;
         if (bytes_read <= 0 && bytes_in_buffer == 0) break;
         if (bytes_read > 0) bytes_in_buffer += bytes_read;
 
