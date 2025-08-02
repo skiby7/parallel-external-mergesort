@@ -8,7 +8,7 @@ if [ -z "$INPUT_FILE" ]; then
 fi
 
 if [ -n "$SRUN" ]; then
-    SRUN=srun -w node08
+    SRUN="srun -w node08"
 else
     SRUN=""
 fi
