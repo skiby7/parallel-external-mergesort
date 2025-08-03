@@ -53,6 +53,9 @@ static void master(const std::string& filename, int world_size) {
         if (bytes_read <= 0 && bytes_in_buffer == 0) break;
         if (bytes_read > 0) bytes_in_buffer += bytes_read;
 
+        std::cout << "[Master] Buffer offset: " << buffer_offset << std::endl;
+        std::cout << "[Master] Bytes in buffer: " << bytes_in_buffer << std::endl;
+        std::cout << "[Master] Bytes read: " << bytes_read << std::endl;
         while (buffer_offset + sizeof(uint64_t) + sizeof(uint32_t) <= bytes_in_buffer) {
             size_t rec_start = buffer_offset;
             buffer_offset += sizeof(uint64_t);
@@ -72,10 +75,11 @@ static void master(const std::string& filename, int world_size) {
             node_chunks[node].insert(node_chunks[node].end(), rec.begin(), rec.end());
             buffer_offset += len;
         }
+        std::cout << "[Master] node_chunks: " << node_chunks[node].size() << std::endl;
 
         // Send to workers. Starting from 1 because rank 0 is the master
         std::cout << "Sending data to workers..." << std::endl;
-        for (unsigned int node = 1; node <= num_workers; ++node) {
+        for (unsigned int node = 1; node <= num_workers; node++) {
             std::vector<char> send_buf;
 
             int chunk_size = node_chunks[node-1].size();
