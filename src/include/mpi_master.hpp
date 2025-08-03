@@ -108,12 +108,17 @@ static void master(const std::string& filename, int world_size) {
         while (workers_done.load() < num_workers) {
             MPI_Status status;
             int result_size;
-            MPI_Recv(&result_size, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
-            int src = status.MPI_SOURCE;
-            #pragma omp critical
+            int src;
+
+            // Serialize MPI calls
+            #pragma omp critical(mpi_recv)
             {
-                std::cout << "Received result from worker " << src << std::endl;
-                std::cout << "Result_size " << result_size << std::endl;
+                if (workers_done.load() < num_workers) {
+                    MPI_Recv(&result_size, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
+                    src = status.MPI_SOURCE;
+                } else {
+                    result_size = 0; // Signal to exit
+                }
             }
 
             if (result_size == 0) {
@@ -122,11 +127,14 @@ static void master(const std::string& filename, int world_size) {
             }
 
             std::vector<char> result(result_size);
-            MPI_Recv(result.data(), result_size, MPI_CHAR, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            std::cout << "[Master] Received sorted chunk of " << result_size << " bytes from worker " << src << std::endl;
+
+            #pragma omp critical(mpi_recv)
+            {
+                MPI_Recv(result.data(), result_size, MPI_CHAR, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            }
+
+            // File I/O can remain parallel
             std::string fname = run_prefix + std::to_string(src);
-            std::cout << "Saving chunk to file: " << fname << std::endl;
-            std::cout << run_prefix << std::endl;
             int fd = openFile(fname, true);
             write(fd, result.data(), result_size);
             close(fd);
