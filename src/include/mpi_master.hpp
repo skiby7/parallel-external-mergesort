@@ -33,7 +33,7 @@ static void master(const std::string& filename, int world_size) {
     const unsigned int num_workers = world_size - 1;
     // std::cout << "[Master] Number of workers: " << num_workers << std::endl;
 
-    size_t node = 0;
+    size_t worker_idx = 0;
     std::vector<char> buffer(MAX_MEMORY / 2);
     size_t bytes_in_buffer = 0;
     size_t buffer_offset = 0;
@@ -71,9 +71,8 @@ static void master(const std::string& filename, int world_size) {
             size_t rec_size = sizeof(uint64_t) + sizeof(uint32_t) + len;
             std::vector<char> rec(rec_size);
             std::memcpy(rec.data(), &buffer[rec_start], rec_size);
-            node++;
-            if (node == num_workers) node = 0;
-            node_chunks[node].insert(node_chunks[node].end(), rec.begin(), rec.end());
+            node_chunks[worker_idx].insert(node_chunks[worker_idx].end(), rec.begin(), rec.end());
+            worker_idx = (worker_idx + 1) % num_workers;
             buffer_offset += len;
         }
         // std::cout << "[Master] node_chunks: " << node_chunks[node].size() << std::endl;
