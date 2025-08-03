@@ -73,7 +73,6 @@ static void master(const std::string& filename, int world_size) {
             std::memcpy(rec.data(), &buffer[rec_start], rec_size);
             node++;
             if (node == num_workers) node = 0;
-            std::cout << "[Master] Sending record to worker " << node << std::endl;
             node_chunks[node].insert(node_chunks[node].end(), rec.begin(), rec.end());
             buffer_offset += len;
         }
