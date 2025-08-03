@@ -9,8 +9,11 @@ if [ -z "$INPUT_FILE" ]; then
     exit 1
 fi
 
+# MAIN_NODE="node01"
+MAIN_NODE="node04"
+
 if [ -n "$SRUN" ]; then
-    SRUN="srun -w node01"
+    SRUN="srun -w $MAIN_NODE"
 else
     SRUN=""
 fi
@@ -100,11 +103,13 @@ run_mpi_strong() {
 
     echo "#################################" | tee -a results/$LOG_FILE
 
-    WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
+    # WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
+    WORKER_NODES=(node05 node06 node07 node08)
     NTHREADS=16
-    for i in 1 2 4 8; do
+    for i in 1 2 4; do
+        # for i in 1 2 4 8; do
         # Build nodelist starting with node08
-        NODELIST="node01"
+        NODELIST=$MAIN_NODE
         for ((n=0; n<i-1; n++)); do
             NODELIST+=",${WORKER_NODES[n]}"
         done
@@ -126,11 +131,13 @@ run_mpi_weak() {
     fi
     LOG_FILE=run_$(date +%s)_mpi_weak.log
     echo "#################################" | tee -a results/$LOG_FILE
-    WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
+    # WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
+    WORKER_NODES=(node05 node06 node07 node08)
     NTHREADS=16
-    for i in 1 2 4 8; do
+    for i in 1 2 4; do
+        # for i in 1 2 4 8; do
         # Build nodelist starting with node08
-        NODELIST="node01"
+        NODELIST=$MAIN_NODE
         for ((n=0; n<i-1; n++)); do
             NODELIST+=",${WORKER_NODES[n]}"
         done
