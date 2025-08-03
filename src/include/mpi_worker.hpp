@@ -26,14 +26,14 @@ static void worker(std::string tmp_location) {
     std::string merge_prefix = tmp_location + "/merge#";
     std::string output_file = tmp_location + "/output.dat";
 
-    std::cout << "[Worker] Starting main loop" << std::endl;
+    // std::cout << "[Worker] Starting main loop" << std::endl;
     while (true) {
         MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         if (size == 0){
-            std::cout << "[Worker] Received termination signal" << std::endl;
+            // std::cout << "[Worker] Received termination signal" << std::endl;
             break;
         }
-        std::cout << "[Worker] Received data of size " << size << std::endl;
+        // std::cout << "[Worker] Received data of size " << size << std::endl;
 
         std::vector<char> buf(size);
         MPI_Recv(buf.data(), size, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -56,13 +56,13 @@ static void worker(std::string tmp_location) {
             records.push(std::move(rec));
             accumulated_size += sizeof(uint64_t) + sizeof(uint32_t) + len;
         }
-        std::cout << "[Worker] Received " << records.size() << " records" << std::endl;
+        // std::cout << "[Worker] Received " << records.size() << " records" << std::endl;
         // Since we have an heap, the vector is already sorted
         // so we can wait another round to then flush the content to disk
         // as the master will only send MAX_MEMORY/2 bytes at a time
         if (accumulated_size >= MAX_MEMORY) {
             std::string file = run_prefix + generateUUID();
-            std::cout << "[Worker] Writing to file " << file << std::endl;
+            // std::cout << "[Worker] Writing to file " << file << std::endl;
             int fd = openFile(file);
             appendToFile(fd, std::move(records), accumulated_size); // This empties the heap
             close(fd);
@@ -72,15 +72,15 @@ static void worker(std::string tmp_location) {
 
     if (!records.empty()) {
         std::string file = run_prefix + generateUUID();
-        std::cout << "[Worker] Writing to file " << file << std::endl;
+        // std::cout << "[Worker] Writing to file " << file << std::endl;
         int fd = openFile(file);
         appendToFile(fd, std::move(records), accumulated_size);
         close(fd);
         accumulated_size = 0;
     }
-    std::cout << "[Worker] Worker starting merge" << std::endl;
+    // std::cout << "[Worker] Worker starting merge" << std::endl;
     ompMerge(run_prefix, merge_prefix, output_file);
-    std::cout << "[Worker] Worker completed merge" << std::endl;
+    // std::cout << "[Worker] Worker completed merge" << std::endl;
     fd = openFile(output_file);
 
     // The receiver can only read up to MAX_MEMORY/2 bytes at a time

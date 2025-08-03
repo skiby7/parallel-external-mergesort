@@ -227,8 +227,6 @@ static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
         }
         batch_size = size;
     }
-    std::cout << "Debug: fd=" << fd << ", current_size=" << current_size
-                 << ", batch_size=" << batch_size << std::endl;
     size_t new_size = current_size + batch_size;
     if (ftruncate(fd, new_size) != 0) {
         std::cerr << "ftruncate failed: " << strerror(errno) << std::endl;
