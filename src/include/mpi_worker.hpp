@@ -71,6 +71,7 @@ static void worker(std::string tmp_location) {
 
     if (!records.empty()) {
         std::string file = run_prefix + generateUUID();
+        std::cout << "[Worker] Writing to file " << file << std::endl;
         int fd = openFile(file);
         appendToFile(fd, std::move(records), accumulated_size);
         close(fd);
