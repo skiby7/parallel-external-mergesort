@@ -90,7 +90,7 @@ static void ompBinaryMerge(const std::vector<std::string>& sequences,
         ++current_level;
     }
 
-    rename(levels.back().back().c_str(), output_file.c_str());
+    std::filesystem::rename(levels.back().back(), output_file);
 }
 
 static void ompMerge(const std::string& run_prefix, const std::string& merge_prefix, const std::string& output_file) {
@@ -100,7 +100,7 @@ static void ompMerge(const std::string& run_prefix, const std::string& merge_pre
     if (sequences.empty()) return;
 
     if (sequences.size() == 1) {
-        rename(sequences[0].c_str(), output_file.c_str());
+        std::filesystem::rename(sequences[0], output_file);
         return;
     }
 
