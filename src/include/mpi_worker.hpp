@@ -10,6 +10,7 @@
 #include <cstring>
 #include <fcntl.h>
 #include <filesystem>
+#include <iostream>
 #include <mpi.h>
 #include <queue>
 #include <string>
@@ -32,6 +33,7 @@ static void worker(std::string tmp_location) {
             std::cout << "[Worker] Received termination signal" << std::endl;
             break;
         }
+        std::cout << "[Worker] Received data of size " << size << std::endl;
 
         std::vector<char> buf(size);
         MPI_Recv(buf.data(), size, MPI_CHAR, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -53,6 +55,7 @@ static void worker(std::string tmp_location) {
 
             records.push(std::move(rec));
         }
+        std::cout << "Received " << records.size() << " records" << std::endl;
         // Since we have an heap, the vector is already sorted
         // so we can wait another round to then flush the content to disk
         // as the master will only send MAX_MEMORY/2 bytes at a time
