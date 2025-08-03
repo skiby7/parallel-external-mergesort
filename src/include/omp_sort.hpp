@@ -131,7 +131,6 @@ static void ompMerge(const std::string& run_prefix, const std::string& merge_pre
         kWayMergeFiles(intermediate_files, final_file, MAX_MEMORY);
         rename(final_file.c_str(), output_file.c_str());
     } else ompBinaryMerge(intermediate_files, merge_prefix, output_file);
-
 }
 
 
