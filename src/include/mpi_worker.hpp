@@ -75,7 +75,9 @@ static void worker(std::string tmp_location) {
         close(fd);
         accumulated_size = 0;
     }
+    std::cout << "[Worker] Worker starting merge" << std::endl;
     ompMerge(run_prefix, merge_prefix, output_file);
+    std::cout << "[Worker] Worker completed merge" << std::endl;
     fd = openFile(output_file);
 
     // The receiver can only read up to MAX_MEMORY/2 bytes at a time
