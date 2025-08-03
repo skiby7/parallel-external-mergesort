@@ -78,7 +78,7 @@ static void worker(std::string tmp_location) {
     // The receiver can only read up to MAX_MEMORY/2 bytes at a time
     send_buf.reserve(MAX_MEMORY/2);
     while ((read_size = read(fd, send_buf.data(), MAX_MEMORY/2)) > 0) {
-        int send_size = send_buf.size();
+        int send_size = read_size;
         MPI_Send(&send_size, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
         MPI_Send(send_buf.data(), send_size, MPI_CHAR, 0, 1, MPI_COMM_WORLD);
         send_buf.clear();
