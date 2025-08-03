@@ -30,6 +30,10 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     std::cout << "Rank " << rank << std::endl;
     if (rank == 0) {
+        char hostname[256];
+        if (gethostname(hostname, sizeof(hostname)) == 0) {
+            std::cout << "Hostname: " << hostname << std::endl;
+        }
         TIMERSTART(mergesort_mpi)
         master(filename, size);
         TIMERSTOP(mergesort_mpi)
