@@ -28,7 +28,7 @@ else
     fi
     echo "Generating input file with at most $PAYLOAD_SIZE bytes per item and $ITEMS_COUNT items..."
     $SRUN make gen_file
-    $SRUN gen_file -r $PAYLOAD_SIZE -s $ITEMS_COUNT $INPUT_FILE
+    $SRUN ./gen_file -r $PAYLOAD_SIZE -s $ITEMS_COUNT $INPUT_FILE
 fi
 
 OUTPUT_FILE=$(dirname $INPUT_FILE)/output.dat
