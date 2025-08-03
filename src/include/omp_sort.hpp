@@ -90,6 +90,8 @@ static void ompBinaryMerge(const std::vector<std::string>& sequences,
     }
 
     rename(levels.back().back().c_str(), output_file.c_str());
+    std::cout << "[Master] Final file: " << levels.back().back() << std::endl;
+    std::cout << "[Master] Output file: " << output_file << std::endl;
 }
 
 static void ompMerge(const std::string& run_prefix, const std::string& merge_prefix, const std::string& output_file) {
@@ -130,8 +132,6 @@ static void ompMerge(const std::string& run_prefix, const std::string& merge_pre
         std::string final_file = merge_prefix + generateUUID();
         kWayMergeFiles(intermediate_files, final_file, MAX_MEMORY);
         rename(final_file.c_str(), output_file.c_str());
-        std::cout << "[Master] Final file: " << final_file << std::endl;
-        std::cout << "[Master] Output file: " << output_file << std::endl;
     } else ompBinaryMerge(intermediate_files, merge_prefix, output_file);
 
 }
