@@ -55,12 +55,13 @@ static void worker(std::string tmp_location) {
 
             records.push(std::move(rec));
         }
-        std::cout << "Received " << records.size() << " records" << std::endl;
+        std::cout << "[Worker] Received " << records.size() << " records" << std::endl;
         // Since we have an heap, the vector is already sorted
         // so we can wait another round to then flush the content to disk
         // as the master will only send MAX_MEMORY/2 bytes at a time
         if (accumulated_size >= MAX_MEMORY) {
             std::string file = run_prefix + generateUUID();
+            std::cout << "[Worker] Writing to file " << file << std::endl;
             int fd = openFile(file);
             appendToFile(fd, std::move(records), accumulated_size); // This empties the heap
             close(fd);
