@@ -117,7 +117,7 @@ static void master(const std::string& filename, int world_size) {
 
             std::vector<char> result(result_size);
             MPI_Recv(result.data(), result_size, MPI_CHAR, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            // std::cout << "[Master] Received sorted chunk of " << result_size << " bytes from worker " << src << std::endl;
+            std::cout << "[Master] Received sorted chunk of " << result_size << " bytes from worker " << src << std::endl;
             std::string fname = run_prefix + std::to_string(src);
             std::cout << "Saving chunk to file: " << fname << std::endl;
             std::cout << run_prefix << std::endl;
