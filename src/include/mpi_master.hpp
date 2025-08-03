@@ -97,7 +97,7 @@ static void master(const std::string& filename, int world_size) {
         MPI_Send(&zero, 1, MPI_INT, node, 0, MPI_COMM_WORLD);
     }
 
-    int n_threads = std::min(NTHREADS, num_workers);
+    int n_threads = num_workers;
     // Here I spawn one thread per worker, or the max I can spawn
     // and each thread will receive a chunk of data from the master node
     std::cout << "Spawning " << n_threads << " threads" << std::endl;

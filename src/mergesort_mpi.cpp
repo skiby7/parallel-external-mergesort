@@ -29,10 +29,12 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     std::cout << "Rank " << rank << std::endl;
-    TIMERSTART(mergesort_mpi)
-    if (rank == 0) master(filename, size);
+    if (rank == 0) {
+        TIMERSTART(mergesort_mpi)
+        master(filename, size);
+        TIMERSTOP(mergesort_mpi)
+    }
     else worker(TMP_LOCATION);
-    TIMERSTOP(mergesort_mpi)
 
     MPI_Finalize();
 
