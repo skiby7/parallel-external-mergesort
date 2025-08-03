@@ -10,11 +10,11 @@ if [ -z "$INPUT_FILE" ]; then
 fi
 
 # MAIN_NODE="node01"
-MAIN_NODE="node04"
+MAIN_NODE="node05"
 # WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
-WORKER_NODES=(node05 node06 node07 node08)
+WORKER_NODES=(node06 node07 node08)
 # NODE_COUNTS=(1 2 4 8)
-NODE_COUNTS=(1 2 4)
+NODE_COUNTS=(1 2)
 
 if [ -n "$SRUN" ]; then
     SRUN="srun -w $MAIN_NODE"
@@ -149,7 +149,7 @@ run_mpi_weak() {
             $SRUN /bin/rm -f $OUTPUT_FILE
         done
         # Double the input size for each run
-        $SRUN cat $INPUT_FILE $INPUT_FILE >> $INPUT_FILE.tmp
+        $SRUN bash -c "cat $INPUT_FILE $INPUT_FILE >> $INPUT_FILE.tmp"
         $SRUN mv $INPUT_FILE.tmp $INPUT_FILE
     done
     echo "#################################" | tee -a results/$LOG_FILE
