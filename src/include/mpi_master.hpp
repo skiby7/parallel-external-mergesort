@@ -92,7 +92,7 @@ static void master(const std::string& filename, int world_size) {
         }
     }
     close(fd);
-    // Notify termination
+    // Notify EOS
     for (unsigned int node = 1; node <= num_workers; ++node) {
         int zero = 0;
         MPI_Send(&zero, 1, MPI_INT, node, 0, MPI_COMM_WORLD);
@@ -101,6 +101,8 @@ static void master(const std::string& filename, int world_size) {
     int n_threads = std::min(NTHREADS, num_workers);
     // Here I spawn one thread per worker, or the max I can spawn
     // and each thread will receive a chunk of data from the master node
+    std::cout << "Spawning " << n_threads << " threads" << std::endl;
+    std::cout << workers_done.load() << " < " << num_workers << std::endl;
     #pragma omp parallel num_threads(n_threads)
     {
         while (workers_done.load() < num_workers) {
