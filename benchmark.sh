@@ -107,8 +107,6 @@ run_mpi_strong() {
     fi
 
     echo "#################################" | tee -a results/$LOG_FILE
-
-
     LOG_FILE=run_$(date +%s)_mpi_strong.log
     NTHREADS=16
     for i in $NODE_COUNTS; do
@@ -117,11 +115,9 @@ run_mpi_strong() {
             NODELIST+=",${WORKER_NODES[n]}"
         done
         for j in $(seq 1 $NRUNS); do
-            SRUN="srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
-
+            SRUN_MPI="srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
             echo -e "(nnodes=$i, nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
-
-            $SRUN ./mergesort_mpi -t $NTHREADS -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
+            $SRUN_MPI ./mergesort_mpi -t $NTHREADS -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
             $SRUN /bin/rm -f $OUTPUT_FILE
         done
     done
@@ -141,9 +137,9 @@ run_mpi_weak() {
             NODELIST+=",${WORKER_NODES[n]}"
         done
         for j in $(seq 1 $NRUNS); do
-            SRUN="srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
-            echo -e "(nnodes=$i, filesize=$($SRUN stat -c%s $INPUT_FILE), nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
-            $SRUN ./mergesort_mpi -t $NTHREADS -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
+            SRUN_MPI="srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
+            echo -e "(nnodes=$i, filesize=$($SRUN_MPI stat -c%s $INPUT_FILE), nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
+            $SRUN_MPI ./mergesort_mpi -t $NTHREADS -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
             $SRUN /bin/rm -f $OUTPUT_FILE
         done
         # Double the input size for each run
