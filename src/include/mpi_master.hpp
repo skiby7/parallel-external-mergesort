@@ -31,6 +31,7 @@ static void master(const std::string& filename, int world_size) {
 
     std::atomic<unsigned int> workers_done{0};
     const unsigned int num_workers = world_size - 1;
+    std::cout << "[Master] Number of workers: " << num_workers << std::endl;
 
     size_t node = 0;
     std::vector<char> buffer(MAX_MEMORY / 2);
@@ -72,6 +73,7 @@ static void master(const std::string& filename, int world_size) {
             std::memcpy(rec.data() + bytes_in_buffer, &buffer[rec_start], rec_size);
             node++;
             if (node == num_workers) node = 0;
+            std::cout << "[Master] Sending record to worker " << node << std::endl;
             node_chunks[node].insert(node_chunks[node].end(), rec.begin(), rec.end());
             buffer_offset += len;
         }
