@@ -1,0 +1,156 @@
+
+#################################
+(sequential binary merge, max_mem=1584280)
+# elapsed time (mergesort_seq): 0.231267s
+# elapsed time (mergesort_seq): 0.222072s
+# elapsed time (mergesort_seq): 0.222928s
+#################################
+(sequential kway merge, max_mem=1584280)
+# elapsed time (mergesort_seq): 0.207567s
+# elapsed time (mergesort_seq): 0.208854s
+# elapsed time (mergesort_seq): 0.209971s
+#################################
+(nthreads=2, max_mem=1584280)
+# elapsed time (mergesort_omp): 0.131222s
+# elapsed time (mergesort_ff): 0.126429s
+# elapsed time (mergesort_omp): 0.131718s
+# elapsed time (mergesort_ff): 0.125568s
+# elapsed time (mergesort_omp): 0.130604s
+# elapsed time (mergesort_ff): 0.127383s
+#################################
+(nthreads=4, max_mem=1584280)
+# elapsed time (mergesort_omp): 0.0803399s
+# elapsed time (mergesort_ff): 0.0922839s
+# elapsed time (mergesort_omp): 0.0813637s
+# elapsed time (mergesort_ff): 0.0901795s
+# elapsed time (mergesort_omp): 0.0813039s
+# elapsed time (mergesort_ff): 0.0905s
+#################################
+(nthreads=6, max_mem=1584280)
+# elapsed time (mergesort_omp): 0.0673672s
+# elapsed time (mergesort_ff): 0.0882804s
+# elapsed time (mergesort_omp): 0.0668613s
+# elapsed time (mergesort_ff): 0.0882191s
+# elapsed time (mergesort_omp): 0.0667233s
+# elapsed time (mergesort_ff): 0.0892346s
+#################################
+(nthreads=8, max_mem=1584280)
+# elapsed time (mergesort_omp): 0.062804s
+# elapsed time (mergesort_ff): 0.0795666s
+# elapsed time (mergesort_omp): 0.0614698s
+# elapsed time (mergesort_ff): 0.0812582s
+# elapsed time (mergesort_omp): 0.0613996s
+# elapsed time (mergesort_ff): 0.0797131s
+#################################
+(nthreads=14, max_mem=1584280)
+# elapsed time (mergesort_omp): 0.0565225s
+# elapsed time (mergesort_ff): 0.0940807s
+# elapsed time (mergesort_omp): 0.0571488s
+# elapsed time (mergesort_ff): 0.0955447s
+# elapsed time (mergesort_omp): 0.0573463s
+# elapsed time (mergesort_ff): 0.0936692s
+#################################
+(nthreads=16, max_mem=1584280)
+# elapsed time (mergesort_omp): 0.0582124s
+# elapsed time (mergesort_ff): 0.0985871s
+# elapsed time (mergesort_omp): 0.0569247s
+# elapsed time (mergesort_ff): 0.101009s
+# elapsed time (mergesort_omp): 0.058184s
+# elapsed time (mergesort_ff): 0.0995047s
+#################################
+(nthreads=20, max_mem=1584280)
+# elapsed time (mergesort_omp): 0.0675965s
+# elapsed time (mergesort_ff): 0.168349s
+# elapsed time (mergesort_omp): 0.0670061s
+# elapsed time (mergesort_ff): 0.165273s
+# elapsed time (mergesort_omp): 0.0677551s
+# elapsed time (mergesort_ff): 0.165607s
+#################################
+(nthreads=26, max_mem=1584280)
+# elapsed time (mergesort_omp): 0.0798671s
+# elapsed time (mergesort_ff): 0.192552s
+# elapsed time (mergesort_omp): 0.0812119s
+# elapsed time (mergesort_ff): 0.193903s
+# elapsed time (mergesort_omp): 0.0797201s
+# elapsed time (mergesort_ff): 0.193952s
+#################################
+(nthreads=32, max_mem=1584280)
+# elapsed time (mergesort_omp): 0.0959624s
+# elapsed time (mergesort_ff): 0.269937s
+# elapsed time (mergesort_omp): 0.0965747s
+# elapsed time (mergesort_ff): 0.274725s
+# elapsed time (mergesort_omp): 0.0964225s
+# elapsed time (mergesort_ff): 0.275926s
+#################################
+(nnodes=1, nthreads=16, max_mem=1584280)
+Rank 0
+Hostname: node04
+Rank 0
+Hostname: node04
+Rank 0
+Hostname: node04
+(nnodes=2, nthreads=16, max_mem=1584280)
+Rank 1
+Rank 0
+Hostname: node04
+Spawning 1 threads
+0 < 1
+Rank 0
+Hostname: node04
+Rank 1
+Spawning 1 threads
+0 < 1
+Worker finished sending sorted file
+[Master] Starting merge
+[Master] Merge complete
+# elapsed time (mergesort_mpi): 0.291482s
+Rank 1
+Rank 0
+Hostname: node04
+Spawning 1 threads
+0 < 1
+Worker finished sending sorted file
+[Master] Starting merge
+[Master] Merge complete
+# elapsed time (mergesort_mpi): 0.284001s
+(nnodes=4, nthreads=16, max_mem=1584280)
+Rank 1
+Rank 3
+Rank 2
+Rank 0
+Hostname: node04
+Spawning 3 threads
+0 < 3
+Worker finished sending sorted file
+Worker finished sending sorted file
+Worker finished sending sorted file
+[Master] Starting merge
+[Master] Merge complete
+# elapsed time (mergesort_mpi): 0.193957s
+Rank 1
+Rank 2
+Rank 3
+Rank 0
+Hostname: node04
+Spawning 3 threads
+0 < 3
+Worker finished sending sorted file
+Worker finished sending sorted file
+Worker finished sending sorted file
+[Master] Starting merge
+[Master] Merge complete
+# elapsed time (mergesort_mpi): 0.196476s
+Rank 2
+Rank 3
+Rank 1
+Rank 0
+Hostname: node04
+Spawning 3 threads
+0 < 3
+Worker finished sending sorted file
+Worker finished sending sorted file
+Worker finished sending sorted file
+[Master] Starting merge
+[Master] Merge complete
+# elapsed time (mergesort_mpi): 0.202125s
+#################################
