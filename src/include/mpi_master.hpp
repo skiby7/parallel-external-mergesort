@@ -104,22 +104,18 @@ static void master(const std::string& filename, int world_size) {
     std::cout << workers_done.load() << " < " << num_workers << std::endl;
     #pragma omp parallel num_threads(n_threads)
     {
-        while (workers_done.load() < num_workers) {
+        while (true) {
             MPI_Status status;
             int result_size;
             // Each thread waits for a worker
             int src = omp_get_thread_num() + 1;
 
-            if (workers_done.load() < num_workers) {
-                MPI_Recv(&result_size, 1, MPI_INT, src, 1, MPI_COMM_WORLD, &status);
-                src = status.MPI_SOURCE;
-            } else {
-                result_size = 0; // Signal to exit
-            }
+            MPI_Recv(&result_size, 1, MPI_INT, src, 1, MPI_COMM_WORLD, &status);
+
 
             if (result_size == 0) {
                 workers_done.fetch_add(1);
-                continue;
+                break;
             }
 
             std::vector<char> result(result_size);
