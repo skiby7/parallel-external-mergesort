@@ -138,9 +138,9 @@ static void master(const std::string& filename, int world_size) {
      * Only the master node access to the disk and merge the sorted chunks
      */
 
-    // std::cout << "[Master] Starting merge" << std::endl;
+    std::cout << "[Master] Starting merge" << std::endl;
     ompMerge(run_prefix, merge_prefix, output_file);
-    // std::cout << "[Master] Merge complete" << std::endl;
+    std::cout << "[Master] Merge complete" << std::endl;
 }
 
 #endif // _MPI_MASTER_HPP
