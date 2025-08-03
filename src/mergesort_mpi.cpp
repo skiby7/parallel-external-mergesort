@@ -1,5 +1,6 @@
 #include "include/cmdline.hpp"
 #include "include/config.hpp"
+#include "include/hpc_helpers.hpp"
 #include "include/mpi_master.hpp"
 #include "include/mpi_worker.hpp"
 #include <mpi.h>
@@ -28,8 +29,10 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
     std::cout << "Rank " << rank << std::endl;
+    TIMERSTART(mergesort_mpi)
     if (rank == 0) master(filename, size);
     else worker(TMP_LOCATION);
+    TIMERSTOP(mergesort_mpi)
 
     MPI_Finalize();
 
