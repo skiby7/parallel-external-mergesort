@@ -149,8 +149,8 @@ run_mpi_weak() {
             $SRUN /bin/rm -f $OUTPUT_FILE
         done
         # Double the input size for each run
-        cat $INPUT_FILE $INPUT_FILE >> $INPUT_FILE.tmp
-        mv $INPUT_FILE.tmp $INPUT_FILE
+        $SRUN cat $INPUT_FILE $INPUT_FILE >> $INPUT_FILE.tmp
+        $SRUN mv $INPUT_FILE.tmp $INPUT_FILE
     done
     echo "#################################" | tee -a results/$LOG_FILE
 }
