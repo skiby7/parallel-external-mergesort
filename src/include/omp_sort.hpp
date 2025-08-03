@@ -93,6 +93,7 @@ static void ompBinaryMerge(const std::vector<std::string>& sequences,
 }
 
 static void ompMerge(const std::string& run_prefix, const std::string& merge_prefix, const std::string& output_file) {
+    std::cout << output_file << std::endl;
     std::vector<std::string> sequences = findFiles(run_prefix);
     const size_t num_threads = omp_get_max_threads();
 
