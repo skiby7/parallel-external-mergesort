@@ -1,16 +1,26 @@
 #!/bin/bash
 
 INPUT_FILE=$1
+PAYLOAD_SIZE=$2
+ITEMS_COUNT=$3
 if [ -z "$INPUT_FILE" ]; then
-    echo "Usage: $0 <input_file>"
+    echo "Usage: $0 <input_file> <payload_size> <items_count>"
     echo "Specify SRUN=1 to run on a node"
     exit 1
 fi
 
 if [ -n "$SRUN" ]; then
-    SRUN="srun -w node08"
+    SRUN="srun -w node01"
 else
     SRUN=""
+fi
+
+if [ -f "$INPUT_FILE" ]; then
+    echo "Input file already exists, to generate a new one, delete it first"
+else
+    echo "Generating input file..."
+    $SRUN make gen_file
+    $SRUN gen_file -r $PAYLOAD_SIZE -s $ITEMS_COUNT $INPUT_FILE
 fi
 
 OUTPUT_FILE=$(dirname $INPUT_FILE)/output.dat
@@ -74,18 +84,18 @@ run_seq() {
     done
 }
 
-run_mpi() {
+run_mpi_strong() {
     if [[ -z "$SRUN" ]]; then
         return 1
     fi
 
     echo "#################################" | tee -a results/$LOG_FILE
 
-    WORKER_NODES=(node01 node02 node03 node04 node05 node06 node07)
+    WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
 
     for i in 1 2 4 8; do
         # Build nodelist starting with node08
-        NODELIST="node08"
+        NODELIST="node01"
         for ((n=0; n<i-1; n++)); do
             NODELIST+=",${WORKER_NODES[n]}"
         done
@@ -101,7 +111,37 @@ run_mpi() {
     done
 }
 
+run_mpi_weak() {
+    if [[ -z "$SRUN" ]]; then
+        return 1
+    fi
+    LOG_FILE=run_$(date +%s)_mpi_weak.log
+    echo "#################################" | tee -a results/$LOG_FILE
+    WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
+    NTHREADS=16
+    for i in 1 2 4 8; do
+        # Build nodelist starting with node08
+        NODELIST="node01"
+        for ((n=0; n<i-1; n++)); do
+            NODELIST+=",${WORKER_NODES[n]}"
+        done
+
+        SRUN="srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
+
+        echo -e "(nnodes=$i, filesize=$($SRUN stat -c%s $INPUT_FILE), nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
+
+        for j in $(seq 1 $NRUNS); do
+            $SRUN ./mergesort_mpi -t $NTHREADS -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
+            $SRUN /bin/rm -f $OUTPUT_FILE
+        done
+        cat $INPUT_FILE >> $INPUT_FILE # doubling the input size for each run
+
+    done
+}
+
 run_seq
 run_parallel
-# run_mpi
+run_mpi_strong
+echo "#################################" | tee -a results/$LOG_FILE
+run_mpi_weak
 echo "#################################" | tee -a results/$LOG_FILE
