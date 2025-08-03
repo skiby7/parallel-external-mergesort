@@ -54,6 +54,7 @@ static void worker(std::string tmp_location) {
             offset += len;
 
             records.push(std::move(rec));
+            accumulated_size += sizeof(uint64_t) + sizeof(uint32_t) + len;
         }
         std::cout << "[Worker] Received " << records.size() << " records" << std::endl;
         // Since we have an heap, the vector is already sorted
