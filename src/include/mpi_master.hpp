@@ -27,6 +27,7 @@ static void master(const std::string& filename, int world_size) {
     std::string merge_prefix = p.parent_path().string() + "/merge#";
     std::string output_file = p.parent_path().string() + "/output.dat";
     int fd = openFile(filename);
+    std::cout << "[Master] File size: " << getFileSize(filename) << std::endl;
 
     std::atomic<unsigned int> workers_done{0};
     const unsigned int num_workers = world_size - 1;
