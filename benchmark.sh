@@ -9,12 +9,12 @@ if [ -z "$INPUT_FILE" ]; then
     exit 1
 fi
 
-# MAIN_NODE="node01"
-MAIN_NODE="node05"
-# WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
-WORKER_NODES=(node06 node07 node08)
-# NODE_COUNTS=(1 2 4 8)
-NODE_COUNTS=(1 2)
+MAIN_NODE="node01"
+# MAIN_NODE="node04"
+WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
+# WORKER_NODES=(node05 node06 node07 node08)
+NODE_COUNTS=(2 4 6 8)
+# NODE_COUNTS=(2 4 8)
 
 if [ -n "$SRUN" ]; then
     SRUN="srun -w $MAIN_NODE"
@@ -142,9 +142,7 @@ run_mpi_weak() {
         done
         for j in $(seq 1 $NRUNS); do
             SRUN="srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
-
             echo -e "(nnodes=$i, filesize=$($SRUN stat -c%s $INPUT_FILE), nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
-
             $SRUN ./mergesort_mpi -t $NTHREADS -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
             $SRUN /bin/rm -f $OUTPUT_FILE
         done
