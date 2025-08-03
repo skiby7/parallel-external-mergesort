@@ -107,7 +107,7 @@ static void master(const std::string& filename, int world_size) {
         while (workers_done.load() < num_workers) {
             MPI_Status status;
             int result_size;
-            int src;
+            int src = 0;
 
             // Serialize MPI calls
             #pragma omp critical(mpi_recv)
