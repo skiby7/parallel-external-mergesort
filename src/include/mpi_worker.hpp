@@ -85,6 +85,7 @@ static void worker(std::string tmp_location) {
     }
     // Done sending the sorted file, bye bye
     MPI_Send(&done, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
+    std::cout << "Worker finished sending sorted file" << std::endl;
     // It is now responsibility of the master to merge the remaining files
     deleteFile(output_file.c_str()); // Cleanup
 }
