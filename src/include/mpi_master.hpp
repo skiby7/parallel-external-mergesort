@@ -26,6 +26,7 @@ static void master(const std::string& filename, int world_size) {
     std::string run_prefix = p.parent_path().string() + "/run#";
     std::string merge_prefix = p.parent_path().string() + "/merge#";
     std::string output_file = p.parent_path().string() + "/output.dat";
+    std::cout << "[Master] Output file: " << output_file << std::endl;
     int fd = openFile(filename);
     // std::cout << "[Master] File size " << filename << ": " << getFileSize(filename) << std::endl;
 
