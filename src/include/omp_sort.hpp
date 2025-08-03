@@ -5,6 +5,7 @@
 #include "config.hpp"
 #include "sorting.hpp"
 #include <cstddef>
+#include <filesystem>
 #include <omp.h>
 #include <string>
 #include <vector>
@@ -93,7 +94,6 @@ static void ompBinaryMerge(const std::vector<std::string>& sequences,
 }
 
 static void ompMerge(const std::string& run_prefix, const std::string& merge_prefix, const std::string& output_file) {
-    std::cout << output_file << std::endl;
     std::vector<std::string> sequences = findFiles(run_prefix);
     const size_t num_threads = omp_get_max_threads();
 
@@ -130,7 +130,7 @@ static void ompMerge(const std::string& run_prefix, const std::string& merge_pre
     if (intermediate_files.size() < 2 * num_threads) {
         std::string final_file = merge_prefix + generateUUID();
         kWayMergeFiles(intermediate_files, final_file, MAX_MEMORY);
-        rename(final_file.c_str(), output_file.c_str());
+        std::filesystem::rename(final_file, output_file);
     } else ompBinaryMerge(intermediate_files, merge_prefix, output_file);
 }
 

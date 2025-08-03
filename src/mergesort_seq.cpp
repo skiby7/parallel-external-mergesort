@@ -4,7 +4,7 @@
 #include "include/sorting.hpp"
 #include <cassert>
 #include <cstdio>
-#include <iostream>
+#include <filesystem>
 #include <string>
 #include <sys/types.h>
 #include <vector>
@@ -38,7 +38,7 @@ void multiLevelMerge(std::vector<std::string> &sequences, const std::string &mer
            current_level++;
        }
 
-       rename(levels.back().back().c_str(), output_file.c_str());
+       std::filesystem::rename(levels.back().back(), output_file);
 }
 
 int main(int argc, char *argv[]) {
@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
     genSortedRunsWithSort(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
     std::vector<std::string> sequences = findFiles(run_prefix);
     if (sequences.size() == 1)
-        rename(sequences[0].c_str(), output_file.c_str());
+        std::filesystem::rename(sequences[0], output_file);
     else {
         /**
          * Added this to test whether k-way merge approach was better than the classic binary merge.
