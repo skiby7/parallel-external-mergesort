@@ -110,7 +110,11 @@ static void master(const std::string& filename, int world_size) {
             int result_size;
             MPI_Recv(&result_size, 1, MPI_INT, MPI_ANY_SOURCE, 1, MPI_COMM_WORLD, &status);
             int src = status.MPI_SOURCE;
-            std::cout << "Received result from worker " << src << std::endl;
+            #pragma omp critical
+            {
+                std::cout << "Received result from worker " << src << std::endl;
+                std::cout << "Result_size " << result_size << std::endl;
+            }
 
             if (result_size == 0) {
                 workers_done.fetch_add(1);
