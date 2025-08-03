@@ -4,8 +4,8 @@ INPUT_FILE=$1
 PAYLOAD_SIZE=$2
 ITEMS_COUNT=$3
 if [ -z "$INPUT_FILE" ]; then
-    echo "Usage: $0 <input_file> <payload_size> <items_count>"
-    echo "Specify SRUN=1 to run on a node"
+    echo "Usage: $0 <input_file> [payload_size] [items_count]"
+    echo "Specify SRUN=1 to schedule using slurm"
     exit 1
 fi
 
@@ -15,10 +15,18 @@ else
     SRUN=""
 fi
 
-if [ -f "$INPUT_FILE" ]; then
+$SRUN ls $INPUT_FILE
+INPUT_EXISTS=$?
+if [ $INPUT_EXISTS -eq 0 ]; then
     echo "Input file already exists, to generate a new one, delete it first"
 else
-    echo "Generating input file..."
+    if [ -z "$PAYLOAD_SIZE" ]; then
+        PAYLOAD_SIZE=64
+    fi
+    if [ -z "$ITEMS_COUNT" ]; then
+        ITEMS_COUNT=20000000
+    fi
+    echo "Generating input file with at most $PAYLOAD_SIZE bytes per item and $ITEMS_COUNT items..."
     $SRUN make gen_file
     $SRUN gen_file -r $PAYLOAD_SIZE -s $ITEMS_COUNT $INPUT_FILE
 fi
@@ -50,6 +58,7 @@ THREAD_COUNTS=(
 mkdir -p results
 echo "" > results/$LOG_FILE
 
+$SRUN make clean
 $SRUN make -j
 run_parallel() {
     for i in "${THREAD_COUNTS[@]}"
@@ -92,7 +101,7 @@ run_mpi_strong() {
     echo "#################################" | tee -a results/$LOG_FILE
 
     WORKER_NODES=(node02 node03 node04 node05 node06 node07 node08)
-
+    NTHREADS=16
     for i in 1 2 4 8; do
         # Build nodelist starting with node08
         NODELIST="node01"
@@ -102,10 +111,10 @@ run_mpi_strong() {
 
         SRUN="srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
 
-        echo -e "(nnodes=$i, nthreads=$NPROCS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
+        echo -e "(nnodes=$i, nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
 
         for j in $(seq 1 $NRUNS); do
-            $SRUN ./mergesort_mpi -t 16 -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
+            $SRUN ./mergesort_mpi -t $NTHREADS -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
             $SRUN /bin/rm -f $OUTPUT_FILE
         done
     done
@@ -134,11 +143,19 @@ run_mpi_weak() {
             $SRUN ./mergesort_mpi -t $NTHREADS -m $USABLE_MEM $INPUT_FILE | tee -a results/$LOG_FILE
             $SRUN /bin/rm -f $OUTPUT_FILE
         done
-        cat $INPUT_FILE >> $INPUT_FILE # doubling the input size for each run
+        # Double the input size for each run
+        cat $INPUT_FILE $INPUT_FILE >> $INPUT_FILE.tmp
+        mv $INPUT_FILE.tmp $INPUT_FILE
 
     done
 }
 
+cleanup() {
+    $SRUN rm -f $INPUT_FILE
+    $SRUN rm -f $OUTPUT_FILE
+}
+
+trap cleanup EXIT
 run_seq
 run_parallel
 run_mpi_strong
