@@ -70,7 +70,9 @@ static void master(const std::string& filename, int world_size) {
 
             size_t rec_size = sizeof(uint64_t) + sizeof(uint32_t) + len;
             std::vector<char> rec(rec_size);
+            std::cout << "[Master] bip" << std::endl;
             std::memcpy(rec.data() + bytes_in_buffer, &buffer[rec_start], rec_size);
+            std::cout << "[Master] bop" << std::endl;
             node++;
             if (node == num_workers) node = 0;
             std::cout << "[Master] Sending record to worker " << node << std::endl;
