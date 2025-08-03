@@ -6,6 +6,7 @@
 #include "sorting.hpp"
 #include <cmath>
 #include <cstddef>
+#include <filesystem>
 #include <ff/ff.hpp>
 #include <ff/pipeline.hpp>
 #include <string>
@@ -182,7 +183,7 @@ struct Master : ff::ff_monode_t<work_t> {
             merge_count++;
             if (merge_count == expected_merges) {
                 if (levels[current_level].size() == 1) {
-                    rename(levels.back().back().c_str(), output_file.c_str());
+                    std::filesystem::rename(levels.back().back(), output_file);
                     return EOS;
                 }
 
