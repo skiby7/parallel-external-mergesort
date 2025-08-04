@@ -47,7 +47,8 @@ USABLE_MEM=$(
   echo "$ONE_THIRD_FILESIZE $AVAIL_MEM $MAX_MEMORY" |
   awk '{ min = $1; for (i = 2; i <= NF; i++) if ($i < min) min = $i; print min }'
 )
-LOG_FILE=run_$(date +%s).log
+TIMESTAMP=$(date +%s)
+LOG_FILE=run_${TIMESTAMP}.log
 
 NRUNS=3
 THREAD_COUNTS=(
@@ -107,7 +108,7 @@ run_mpi_strong() {
     fi
 
     echo "#################################" | tee -a results/$LOG_FILE
-    LOG_FILE=run_$(date +%s)_mpi_strong.log
+    LOG_FILE=run_${TIMESTAMP}_mpi_strong.log
     NTHREADS=16
     for i in "${NODE_COUNTS[@]}"; do
         NODELIST=$MAIN_NODE
@@ -128,7 +129,7 @@ run_mpi_weak() {
     if [[ -z "$SRUN" ]]; then
         return 1
     fi
-    LOG_FILE=run_$(date +%s)_mpi_weak.log
+    LOG_FILE=run_${TIMESTAMP}_mpi_weak.log
     echo "#################################" | tee -a results/$LOG_FILE
     NTHREADS=16
     for i in "${NODE_COUNTS[@]}"; do

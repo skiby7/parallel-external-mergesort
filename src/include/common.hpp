@@ -216,16 +216,16 @@ static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
         exit(EXIT_FAILURE);
     }
 
-    size_t batch_size = 0;
+    size_t batch_size = size;
     if constexpr (!std::is_same_v<Container, std::priority_queue<Record, std::vector<Record>, RecordComparator>>) {
-        for (const auto& record : records)
-            batch_size += sizeof(record.key) + sizeof(record.len) + record.len;
+        if (!batch_size)
+            for (const auto& record : records)
+                batch_size += sizeof(record.key) + sizeof(record.len) + record.len;
     } else {
-        if (size < 0) {
+        if (batch_size < 0) {
             std::cerr << "Invalid size" << std::endl;
             exit(EXIT_FAILURE);
         }
-        batch_size = size;
     }
     size_t new_size = current_size + batch_size;
     if (ftruncate(fd, new_size) != 0) {

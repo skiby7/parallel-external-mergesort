@@ -20,7 +20,8 @@
 static void worker(std::string tmp_location) {
     int fd = 0, done = 0;
     size_t accumulated_size = 0, read_size = 0, offset = 0, size = 0;
-    std::priority_queue<Record, std::vector<Record>, RecordComparator> records;
+    // std::priority_queue<Record, std::vector<Record>, RecordComparator> records;
+    std::vector<Record> records;
     std::vector<char> send_buf;
     std::string run_prefix = tmp_location + "/run#";
     std::string merge_prefix = tmp_location + "/merge#";
@@ -49,7 +50,7 @@ static void worker(std::string tmp_location) {
             std::memcpy(rec.rpayload.get(), &buf[offset], len);
             offset += len;
 
-            records.push(std::move(rec));
+            records.push_back(std::move(rec));
             accumulated_size += sizeof(uint64_t) + sizeof(uint32_t) + len;
         }
 
@@ -59,6 +60,7 @@ static void worker(std::string tmp_location) {
         if (accumulated_size >= MAX_MEMORY) {
             std::string file = run_prefix + generateUUID();
             int fd = openFile(file);
+            std::sort(records.begin(), records.end(), RecordComparator{});
             appendToFile(fd, std::move(records), accumulated_size); // This empties the heap
             close(fd);
             accumulated_size = 0;
@@ -68,6 +70,7 @@ static void worker(std::string tmp_location) {
     if (!records.empty()) {
         std::string file = run_prefix + generateUUID();
         int fd = openFile(file);
+        std::sort(records.begin(), records.end(), RecordComparator{});
         appendToFile(fd, std::move(records), accumulated_size);
         close(fd);
         accumulated_size = 0;
