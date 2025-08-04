@@ -34,7 +34,7 @@
 #include <iomanip>
 
 template<typename Container>
-static ssize_t appendToFile(int fd, Container&& records, ssize_t size = -1);
+static ssize_t appendToFile(int fd, Container&& records, ssize_t size);
 static int openFile(const std::string& filename, bool append = false);
 
 
@@ -91,8 +91,8 @@ static void generateFile(std::string filename) {
         records.push_back(record);
 
         if (size > MAX_MEMORY) {
+            appendToFile(fd, std::move(records), size);
             size = 0;
-            appendToFile(fd, std::move(records));
         }
 
         if (i % (ARRAY_SIZE / 100) == 0 || i == ARRAY_SIZE - 1) {
@@ -102,7 +102,7 @@ static void generateFile(std::string filename) {
     }
 
     if (!records.empty())
-        appendToFile(fd, std::move(records));
+        appendToFile(fd, std::move(records), size);
 
     printf("\rProgress: 100%%\n");
     close(fd);
