@@ -90,14 +90,14 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
         }
 
         if (out_buf_size >= usable_mem) {
-            bytes_written += appendToFile(fd, std::move(output_buffer));
+            bytes_written += appendToFile(fd, std::move(output_buffer), out_buf_size);
             out_buf_size = 0;
             output_buffer.clear();
         }
     }
 
     if (!output_buffer.empty())
-        bytes_written += appendToFile(fd, std::move(output_buffer));
+        bytes_written += appendToFile(fd, std::move(output_buffer), out_buf_size);
 
 
     deleteFile(file1.c_str());
@@ -192,14 +192,14 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
         }
 
         if (out_buf_size >= usable_mem) {
-            bytes_written += appendToFile(fd, std::move(output_buffer));
+            bytes_written += appendToFile(fd, std::move(output_buffer), out_buf_size);
             output_buffer.clear();
             out_buf_size = 0;
         }
     }
 
     if (!output_buffer.empty()) {
-        bytes_written += appendToFile(fd, std::move(output_buffer));
+        bytes_written += appendToFile(fd, std::move(output_buffer), out_buf_size);
     }
 
     close(fd);
@@ -391,7 +391,7 @@ static void genSequenceFiles(
 
             // Flush if the output buffer is large
             if (output_buffer_size >= output_mem_threshold) {
-                io_offset += appendToFile(fd, std::move(output_buffer));
+                io_offset += appendToFile(fd, std::move(output_buffer), output_buffer_size);
                 output_buffer.clear();
                 output_buffer_size = 0;
             }
@@ -405,7 +405,7 @@ static void genSequenceFiles(
 
         // Final flush for this run
         if (!output_buffer.empty()) {
-            io_offset += appendToFile(fd, std::move(output_buffer));
+            io_offset += appendToFile(fd, std::move(output_buffer), output_buffer_size);
             output_buffer.clear();
             output_buffer_size = 0;
         }
@@ -454,7 +454,7 @@ static void genSortedRunsWithSort(
         int fd = openFile(output_filename);
 
         // Reuse your existing appendToFile logic, or adapt to vector
-        appendToFile(fd, std::move(buffer));
+        appendToFile(fd, std::move(buffer), actual_bytes_read);
         close(fd);
 
         run++;

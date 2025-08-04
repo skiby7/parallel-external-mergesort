@@ -218,7 +218,7 @@ static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
 
     size_t batch_size = size;
     if constexpr (!std::is_same_v<Container, std::priority_queue<Record, std::vector<Record>, RecordComparator>>) {
-        if (!batch_size)
+        if (batch_size <= 0)
             for (const auto& record : records)
                 batch_size += sizeof(record.key) + sizeof(record.len) + record.len;
     } else {
