@@ -18,7 +18,10 @@ all: $(TARGETS)
 debug: $(DEBUG_TARGETS)
 
 gen_file: $(SRC_DIR)/gen_file.cpp $(SRC_DIR)/include/
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -o gen_file $(SRC_DIR)/gen_file.cpp $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) -o gen_file $(SRC_DIR)/gen_file.cpp $(LDFLAGS)
+
+test_seq_gen: $(SRC_DIR)/test_seq_gen.cpp $(SRC_DIR)/include/
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) -o test_seq_gen $(SRC_DIR)/test_seq_gen.cpp $(LDFLAGS)
 
 mergesort_seq: $(SRC_DIR)/mergesort_seq.cpp $(SRC_DIR)/include/
 	$(CXX) $(CXXFLAGS) $(INCLUDES) $(OPTFLAGS) -o $@ $< $(LDFLAGS)
