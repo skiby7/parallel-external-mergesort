@@ -3,6 +3,7 @@
 
 #include "common.hpp"
 #include "hpc_helpers.hpp"
+#include "record.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
@@ -220,86 +221,6 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
  * @param max_memory The maximum memory to use.
  * @param output_filename_prefix The prefix for the output file names.
  */
-// static void genSequenceFiles(
-//     const std::string& input_filename,
-//     size_t offset,
-//     size_t bytes_to_process,
-//     size_t max_memory,
-//     const std::string& output_filename_prefix
-// ) {
-//     size_t usable_mem = (max_memory * 8) / 10; // Leaving a 20% of space to the output buffer
-//     std::vector<Record> unsorted;
-//     std::deque<Record> output_buffer;
-//     size_t output_buffer_size = 0;
-//     std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
-
-//     std::vector<Record> buffer;
-//     size_t total_records_read = 0;
-//     size_t total_records_written = 0;
-//     int fd;
-//     size_t io_offset = 0;
-
-//     // Skip the unsorted initialization and push the records directly to the heap
-//     ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, std::min(usable_mem, bytes_to_process));
-//     total_records_read += heap.size();
-
-//     ssize_t run = 1, curr_offset = offset + bytes_read, free_bytes = usable_mem - bytes_read, last_read = bytes_read;
-//     ssize_t bytes_remaining = bytes_to_process - bytes_read;
-
-//     while (bytes_remaining > 0 || !heap.empty() || !unsorted.empty()) { // I have to process all the bytes in the file
-//         std::string output_filename = output_filename_prefix + std::to_string(run);
-//         fd = openFile(output_filename);
-//         bytes_remaining = bytes_to_process - bytes_read;
-//         while (!heap.empty()) { // A run is complete when the heap is empty
-//             Record record = heap.top();
-//             heap.pop();
-//             size_t record_key = record.key;
-
-//             // Flush the buffer to the output file and store the bytes freed
-//             free_bytes += sizeof(record.key) + sizeof(record.len) + record.len;
-//             output_buffer_size += sizeof(record.key) + sizeof(record.len) + record.len;
-//             output_buffer.push_back(std::move(record));
-//             // free_bytes += appendRecordToFile(output_filename, record);
-//             total_records_written++;
-//             if (bytes_remaining > 0) {
-//                 // If there are bytes remained to process, read them into the buffer or at least read some bytes
-//                 last_read = readRecordsFromFile(input_filename, buffer, curr_offset, std::min(bytes_remaining, free_bytes));
-//                 total_records_read += buffer.size();
-//                 // If I manage to read something I have to update the free_bytes counter
-//                 // And the bytes_read counter
-//                 free_bytes -= last_read;
-//                 bytes_read += last_read;
-//                 curr_offset += last_read;
-//                 bytes_remaining = bytes_to_process - bytes_read;
-//             }
-//             for (auto& r : buffer) {
-//                 if (r.key < record_key) unsorted.push_back(std::move(r));
-//                 else heap.push(std::move(r));
-//             }
-//             buffer.clear();
-//             // std::cout << "Output buffer size: " << output_buffer_size << std::endl;
-//             // std::cout << "Threshold: " << max_memory - usable_mem << std::endl;
-
-//             if (output_buffer_size > max_memory - usable_mem) {
-//                 io_offset += appendToFile(fd, std::move(output_buffer));
-//                 output_buffer.clear();
-//                 output_buffer_size = 0;
-//             }
-//         }
-//         // If I'm here it means that the heap is empty, so let's process the unsorted set
-//         for(auto& r : unsorted)
-//             heap.push(std::move(r));
-//         // Now the heap is full again and we can clear the unsorted set
-//         unsorted.clear();
-//         if (output_buffer_size) {
-//             io_offset += appendToFile(fd, std::move(output_buffer));
-//             output_buffer.clear();
-//             output_buffer_size = 0;
-//         }
-//         close(fd);
-//         run++;
-//     }
-// }
 static void genSequenceFiles(
     const std::string& input_filename,
     size_t offset,
@@ -307,109 +228,74 @@ static void genSequenceFiles(
     size_t max_memory,
     const std::string& output_filename_prefix
 ) {
-    size_t usable_mem = (max_memory * 8) / 10; // Leave 20% for output buffer
-    size_t output_mem_threshold = max_memory - usable_mem;
-
-    std::vector<Record> output_buffer;
-    size_t output_buffer_size = 0;
-
-    std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
-    std::vector<Record> buffer;
+    size_t usable_mem = (max_memory * 8) / 10; // Leaving a 20% of space to the output buffer
     std::vector<Record> unsorted;
-
-    size_t total_records_read = 0;
-    size_t total_records_written = 0;
+    std::deque<Record> output_buffer;
+    size_t output_buffer_size = 0;
+    std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
+    size_t heap_batch_size = 0;
+    std::vector<Record> buffer;
+    int fd;
     size_t io_offset = 0;
 
-    // Initial read into heap
-    ssize_t bytes_read = readRecordsFromFile(
-        input_filename, heap, offset, std::min(usable_mem, bytes_to_process)
-    );
-    total_records_read += heap.size();
+    // Skip the unsorted initialization and push the records directly to the heap
+    ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, std::min(usable_mem, bytes_to_process));
+    ssize_t run = 1, curr_offset = offset + bytes_read, free_bytes = usable_mem - bytes_read, last_read = bytes_read;
+    ssize_t bytes_remaining = bytes_to_process - bytes_read;
 
-    size_t run = 1;
-    size_t curr_offset = offset + bytes_read;
-    size_t free_bytes = usable_mem - bytes_read;
-    size_t bytes_remaining = bytes_to_process - bytes_read;
-
-    while (bytes_remaining > 0 || !heap.empty() || !unsorted.empty()) {
+    while (bytes_remaining > 0 || !heap.empty() || !unsorted.empty()) { // I have to process all the bytes in the file
         std::string output_filename = output_filename_prefix + std::to_string(run);
-        int fd = openFile(output_filename);
-
+        fd = openFile(output_filename);
         bytes_remaining = bytes_to_process - bytes_read;
-        size_t batch_size = heap.size()/3;
-        while (!heap.empty()) {
-            std::vector<Record> batch;
-            size_t batch_bytes = 0;
-            batch.reserve(batch_size);
 
-            // Pop a batch from the heap
-            while (!heap.empty() && batch.size() < batch_size) {
-                Record record = heap.top();
+        heap_batch_size = std::max(1UL, heap.size()/20);
+        // std::cout << "Heap batch size: " << heap_batch_size << std::endl;
+        while (!heap.empty()) { // A run is complete when the heap is empty
+            Record record;
+            size_t record_key = 0;
+            for (size_t i = 0; i < heap_batch_size && !heap.empty(); i++) {
+                record = heap.top();
                 heap.pop();
+                record_key = record.key;
 
-                size_t record_size = sizeof(record.key) + sizeof(record.len) + record.len;
-                free_bytes += record_size;
-                output_buffer_size += record_size;
-                batch_bytes += record_size;
-
-                batch.push_back(std::move(record));
-                total_records_written++;
+                // Flush the buffer to the output file and store the bytes freed
+                free_bytes += sizeof(record.key) + sizeof(record.len) + record.len;
+                output_buffer_size += sizeof(record.key) + sizeof(record.len) + record.len;
+                output_buffer.push_back(std::move(record));
             }
-
-            // Move batch to output buffer
-            output_buffer.insert(
-                output_buffer.end(),
-                std::make_move_iterator(batch.begin()),
-                std::make_move_iterator(batch.end())
-            );
-
-            // Refill the heap from input if there's free memory and input remaining
-            if (bytes_remaining > 0 && free_bytes > 0) {
-                size_t chunk = std::min(bytes_remaining, free_bytes);
-                ssize_t last_read = readRecordsFromFile(input_filename, buffer, curr_offset, chunk);
-
-                if (last_read <= 0)
-                    break;
-
+            // Now record key is the last read
+            if (bytes_remaining > 0) {
+                // If there are bytes remained to process, read them into the buffer or at least read some bytes
+                last_read = readRecordsFromFile(input_filename, buffer, curr_offset, std::min(bytes_remaining, free_bytes));
+                // If I manage to read something I have to update the free_bytes counter
+                // And the bytes_read counter
+                free_bytes -= last_read;
                 bytes_read += last_read;
                 curr_offset += last_read;
                 bytes_remaining = bytes_to_process - bytes_read;
-                free_bytes -= last_read;
-
-                if (!buffer.empty()) {
-                    uint64_t last_key = output_buffer.back().key;
-                    for (auto& r : buffer) {
-                        if (r.key < last_key)
-                            unsorted.push_back(std::move(r));
-                        else
-                            heap.push(std::move(r));
-                    }
-                    buffer.clear();
-                }
             }
+            for (auto& r : buffer) {
+                if (r.key < record_key) unsorted.push_back(std::move(r));
+                else heap.push(std::move(r));
+            }
+            buffer.clear();
 
-            // Flush if the output buffer is large
-            if (output_buffer_size >= output_mem_threshold) {
+            if (output_buffer_size > max_memory - usable_mem) {
                 io_offset += appendToFile(fd, std::move(output_buffer), output_buffer_size);
                 output_buffer.clear();
                 output_buffer_size = 0;
             }
         }
-
-        // Heap is empty — refill it from unsorted buffer
-        for (auto& r : unsorted) {
+        // If I'm here it means that the heap is empty, so let's process the unsorted set
+        for(auto& r : unsorted)
             heap.push(std::move(r));
-        }
+        // Now the heap is full again and we can clear the unsorted set
         unsorted.clear();
-
-        // Final flush for this run
-        if (!output_buffer.empty()) {
+        if (output_buffer_size) {
             io_offset += appendToFile(fd, std::move(output_buffer), output_buffer_size);
             output_buffer.clear();
             output_buffer_size = 0;
         }
-
         close(fd);
         run++;
     }

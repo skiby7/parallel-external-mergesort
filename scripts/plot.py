@@ -4,101 +4,181 @@ import numpy as np
 import plotly.graph_objects as go
 from collections import defaultdict
 
-log_path = sys.argv[1]  # Replace with your actual path
+# Base name (no extension)
+base = sys.argv[1]
 
-# Load log content
-with open(log_path, "r") as f:
-    log = f.read()
+# Prepare paths
+paths = {
+    'seq':        base + '.log',
+    'mpi_strong': base + '_mpi_strong.log',
+    'mpi_weak':   base + '_mpi_weak.log',
+}
 
-# Store times
+def read_log(path):
+    try:
+        return open(path).read()
+    except IOError:
+        print(f"Warning: could not open {path}")
+        return ""
+
+# Load content
+logs = {k: read_log(p) for k, p in paths.items()}
+
+# Common regexes
+time_pattern   = r"# elapsed time \((.*?)\):\s*([0-9.]+)s"
+section_pattern = r"^\((.*?)\)\s*((?:# elapsed time.*\n?)+)"
+
+# --- 1) Sequential + OMP / FastFlow (unchanged) ---
 seq_binary_times = []
-seq_kway_times = []
-omp_times = defaultdict(list)
-ff_times = defaultdict(list)
+seq_kway_times   = []
+omp_times        = defaultdict(list)
+ff_times         = defaultdict(list)
 
-# Patterns
-time_pattern = r"# elapsed time \((.*?)\): ([0-9.]+)s"
-section_pattern = r"^#{33,}\n\((.*?)\)\n((?:# elapsed time.*\n?)+)"
-
-# Parse log sections
-for match in re.finditer(section_pattern, log, re.MULTILINE):
-    header = match.group(1)
-    body = match.group(2)
-
-    if "sequential binary" in header:
-        seq_binary_times.extend([float(t) for _, t in re.findall(time_pattern, body)])
-    elif "sequential kway" in header:
-        seq_kway_times.extend([float(t) for _, t in re.findall(time_pattern, body)])
+for header, body in re.findall(section_pattern, logs['seq'], re.MULTILINE):
+    if 'sequential binary' in header:
+        seq_binary_times += [float(t) for _, t in re.findall(time_pattern, body)]
+    elif 'sequential kway' in header:
+        seq_kway_times  += [float(t) for _, t in re.findall(time_pattern, body)]
     else:
-        threads_match = re.search(r"nthreads=(\d+)", header)
-        if not threads_match:
-            continue
-        threads = int(threads_match.group(1))
+        th = re.search(r"nthreads=(\d+)", header)
+        if not th: continue
+        nthreads = int(th.group(1))
         for algo, t in re.findall(time_pattern, body):
-            if algo == "mergesort_omp":
-                omp_times[threads].append(float(t))
-            elif algo == "mergesort_ff":
-                ff_times[threads].append(float(t))
+            if algo == 'mergesort_omp':
+                omp_times[nthreads].append(float(t))
+            elif algo == 'mergesort_ff':
+                ff_times[nthreads].append(float(t))
 
-# Compute averages
 seq_binary_avg = np.mean(seq_binary_times)
-seq_kway_avg = np.mean(seq_kway_times)
-best_seq = min(seq_binary_avg, seq_kway_avg)
+seq_kway_avg   = np.mean(seq_kway_times)
+best_seq       = min(seq_binary_avg, seq_kway_avg)
 
-omp_avg = {k: np.mean(v) for k, v in omp_times.items()}
-ff_avg = {k: np.mean(v) for k, v in ff_times.items()}
+omp_avg      = {t: np.mean(v) for t, v in omp_times.items()}
+ff_avg       = {t: np.mean(v) for t, v in ff_times.items()}
+omp_speedup  = {t: best_seq/v for t, v in omp_avg.items()}
+ff_speedup   = {t: best_seq/v for t, v in ff_avg.items()}
+threads_all  = sorted(set(omp_speedup) | set(ff_speedup))
 
-omp_speedup = {k: best_seq / v for k, v in omp_avg.items()}
-ff_speedup = {k: best_seq / v for k, v in ff_avg.items()}
+# --- 2) MPI-strong scaling – by nnodes ---
+mpi_strong = defaultdict(list)
+for header, body in re.findall(section_pattern, logs['mpi_strong'], re.MULTILINE):
+    m = re.search(r"nnodes=(\d+)", header)
+    if not m:
+        continue
+    nn = int(m.group(1))
+    times = [float(t) for algo, t in re.findall(time_pattern, body) if algo == 'mergesort_mpi']
+    mpi_strong[nn] += times
 
-all_threads = sorted(set(omp_speedup.keys()) | set(ff_speedup.keys()))
+mpi_strong_avg     = {n: np.mean(v) for n, v in mpi_strong.items()}
+mpi_strong_speedup = {n: best_seq / t for n, t in mpi_strong_avg.items()}
+nodes_strong       = sorted(mpi_strong_speedup)
 
-# === Plot 1: Combined Speedup Plot ===
-fig_speedup = go.Figure()
+# --- 3) MPI-weak scaling – by nnodes & filesize ---
+weak_entries = []
+for header, body in re.findall(section_pattern, logs['mpi_weak'], re.MULTILINE):
+    m = re.search(r"nnodes=(\d+).*?filesize=(\d+)", header)
+    if not m:
+        continue
+    nn, fs = map(int, m.groups())
+    times = [float(t) for algo, t in re.findall(time_pattern, body) if algo == 'mergesort_mpi']
+    if times:
+        weak_entries.append((nn, fs, np.mean(times)))
 
-fig_speedup.add_trace(go.Scatter(
-    x=all_threads,
-    y=[omp_speedup.get(k, None) for k in all_threads],
+# sort and pick first as baseline
+weak_entries.sort(key=lambda x: x[0])
+base_nodes, base_fs, base_time = weak_entries[0]
+
+mpi_weak_speedup = {}
+for nn, fs, t in weak_entries:
+    t_ideal = base_time * (fs / base_fs)
+    mpi_weak_speedup[nn] = t_ideal / t
+
+nodes_weak = sorted(mpi_weak_speedup)
+
+
+# === Plot everything together ===
+fig = go.Figure()
+
+# OMP / FastFlow
+fig.add_trace(go.Scatter(
+    x=threads_all,
+    y=[omp_speedup[t] for t in threads_all],
     mode='lines+markers',
-    name='OMP',
-    line=dict(color='blue')
+    name='OMP'
+))
+fig.add_trace(go.Scatter(
+    x=threads_all,
+    y=[ff_speedup[t] for t in threads_all],
+    mode='lines+markers',
+    name='FastFlow'
 ))
 
-fig_speedup.add_trace(go.Scatter(
-    x=all_threads,
-    y=[ff_speedup.get(k, None) for k in all_threads],
+# MPI strong
+fig.add_trace(go.Scatter(
+    x=nodes_strong,
+    y=[mpi_strong_speedup[n] for n in nodes_strong],
     mode='lines+markers',
-    name='FastFlow',
-    line=dict(color='orange')
+    name='MPI Strong'
 ))
 
-fig_speedup.add_trace(go.Scatter(
-    x=all_threads,
-    y=all_threads,
+
+# Ideal line
+max_workers = max(threads_all + nodes_strong + nodes_weak)
+fig.add_trace(go.Scatter(
+    x=list(range(1, max_workers+1)),
+    y=list(range(1, max_workers+1)),
     mode='lines',
-    name='Ideal Speedup',
-    line=dict(color='gray', dash='dash')
+    name='Ideal',
+    line=dict(dash='dash')
 ))
 
-fig_speedup.update_layout(
-    title="Speedup vs Best Sequential (OMP vs FastFlow)",
-    xaxis_title="Number of Threads",
+fig.update_layout(
+    title="Speedup Comparison: OMP, FastFlow, MPI Strong & Weak",
+    xaxis_title="Workers (threads or nodes)",
     yaxis_title="Speedup",
     template="plotly_white"
 )
+fig.show()
 
-fig_speedup.show()
-
-# === Plot 2: Binary vs K-Way Merge Raw Times ===
-fig_seq = go.Figure(data=[
-    go.Bar(name='Binary Merge', x=['Binary'], y=[seq_binary_avg], marker_color='blue'),
-    go.Bar(name='K-Way Merge', x=['K-Way'], y=[seq_kway_avg], marker_color='green')
+# === Sequential binary vs k-way ===
+fig2 = go.Figure(data=[
+    go.Bar(name='Binary', x=['Binary'], y=[seq_binary_avg]),
+    go.Bar(name='K-Way',  x=['K-Way'],  y=[seq_kway_avg])
 ])
-
-fig_seq.update_layout(
-    title="Sequential Merge Times: Binary vs K-Way",
+fig2.update_layout(
+    title="Sequential Merge: Binary vs K-Way",
     yaxis_title="Time (s)",
     template="plotly_white"
 )
+fig2.show()
 
-fig_seq.show()
+# === Separate plot: MPI-weak actual vs ideal ===
+# For weak scaling, ideal speedup grows linearly with the number of nodes
+ideal_weak = {n: n for n in nodes_weak}
+
+fig_weak = go.Figure()
+
+# Actual MPI-weak speedup
+fig_weak.add_trace(go.Scatter(
+    x=nodes_weak,
+    y=[mpi_weak_speedup[n] for n in nodes_weak],
+    mode='lines+markers',
+    name='MPI Weak Actual'
+))
+
+# Ideal weak speedup
+fig_weak.add_trace(go.Scatter(
+    x=nodes_weak,
+    y=[ideal_weak[n] for n in nodes_weak],
+    mode='lines',
+    name='Ideal Weak',
+    line=dict(dash='dash')
+))
+
+fig_weak.update_layout(
+    title="MPI Weak Scaling: Actual vs Ideal",
+    xaxis_title="Number of Nodes",
+    yaxis_title="Speedup",
+    template="plotly_white"
+)
+fig_weak.show()
