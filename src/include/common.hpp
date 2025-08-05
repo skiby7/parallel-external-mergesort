@@ -7,7 +7,6 @@
 #define _COMMON_HPP
 
 #include "config.hpp"
-#include "feistel.hpp"
 #include "record.hpp"
 #include <cerrno>
 #include <cmath>
@@ -65,6 +64,7 @@ static std::string generateUUID() {
     return oss.str();
 }
 
+
 static void generateFile(std::string filename) {
     int fd = open(filename.c_str(), O_RDWR | O_CREAT | O_APPEND, 0666);
     if (fd < 0) {
@@ -79,13 +79,15 @@ static void generateFile(std::string filename) {
     Record record;
     std::deque<Record> records;
     size_t size = 0;
-
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    std::uniform_int_distribution<uint32_t> dist32;
     for (size_t i = 0; i < ARRAY_SIZE; i++) {
-        record.key = feistel_encrypt((uint32_t)i, 0xDEADBEEF, ROUNDS);
+        record.key = dist32(gen);
         record.len = rand() % (RECORD_SIZE - 8) + 8;
         record.rpayload = std::make_unique<char[]>(record.len);
         for (size_t j = 0; j < record.len; j++)
-            record.rpayload[j] = feistel_encrypt(j + i, 0x01, 1) & 0xFF;
+            record.rpayload[j] = rand() & 0xFF;
 
         size += sizeof(record) + record.len;
         records.push_back(record);
