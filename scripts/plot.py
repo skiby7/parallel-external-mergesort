@@ -182,3 +182,12 @@ fig_weak.update_layout(
     template="plotly_white"
 )
 fig_weak.show()
+
+print("OMP")
+print(omp_speedup)
+print("FastFlow")
+print(ff_speedup)
+print("MPI Strong")
+print(mpi_strong_speedup)
+print("MPI Weak")
+print(mpi_weak_speedup)
