@@ -1,0 +1,14 @@
+#################################
+(nnodes=2, filesize=2975101386, nthreads=16, max_mem=991700462)
+# elapsed time (mergesort_mpi): 358.743s
+(nnodes=2, filesize=2975101386, nthreads=16, max_mem=991700462)
+# elapsed time (mergesort_mpi): 353.599s
+(nnodes=2, filesize=2975101386, nthreads=16, max_mem=991700462)
+# elapsed time (mergesort_mpi): 359.23s
+(nnodes=4, filesize=5950202772, nthreads=16, max_mem=991700462)
+# elapsed time (mergesort_mpi): 519.24s
+(nnodes=4, filesize=5950202772, nthreads=16, max_mem=991700462)
+# elapsed time (mergesort_mpi): 521.312s
+(nnodes=4, filesize=5950202772, nthreads=16, max_mem=991700462)
+# elapsed time (mergesort_mpi): 516.418s
+(nnodes=8, filesize=11900405544, nthreads=16, max_mem=991700462)
