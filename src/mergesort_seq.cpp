@@ -47,21 +47,17 @@ int main(int argc, char *argv[]) {
         return -1;
     std::string filename = argv[start];
 
+    size_t file_size = getFileSize(filename);
+    MAX_MEMORY = std::min(MAX_MEMORY, file_size + (file_size/10));
     std::filesystem::path p(filename);
     std::string run_prefix = p.parent_path().string() + "/run#";
     std::string merge_prefix = p.parent_path().string() + "/merge#";
     std::string output_file = p.parent_path().string() + "/output.dat";
     TIMERSTART(mergesort_seq)
-    genSortedRunsWithSort(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
-    std::vector<std::string> sequences = findFiles(run_prefix);
+    std::vector<std::string> sequences = genSortedRunsWithSort(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
     if (sequences.size() == 1)
         std::filesystem::rename(sequences[0], output_file);
     else {
-        /**
-         * Added this to test whether k-way merge approach was better than the classic binary merge.
-         * It is and by a significant amount.
-         * Also, with low memory available the parallell sorting is way less performant than the sequential one.
-         */
         if (KWAY_MERGE)
             kWayMergeFiles(sequences, output_file, MAX_MEMORY);
         else

@@ -38,8 +38,7 @@ static int openFile(const std::string& filename, bool append = false);
 
 
 static std::string generateUUID() {
-    std::random_device rd;
-    std::mt19937_64 gen(rd());
+    thread_local std::mt19937_64 gen{std::random_device{}()};
     std::uniform_int_distribution<uint32_t> dist32;
     std::uniform_int_distribution<uint16_t> dist16;
 
@@ -112,9 +111,9 @@ static void generateFile(std::string filename) {
 
 
 
-static inline bool checkSorted(std::vector<unsigned long>& array) {
+static inline bool checkSorted(std::vector<Record>& array) {
     for (size_t i = 1; i < array.size(); i++)
-        if (array[i] < array[i-1]) {
+        if (array[i].key < array[i-1].key) {
             // std::cout << "Array is not sorted at index " << i << ": " << array[i] << " < " << array[i0] << std::endl;
             return false;
         }
@@ -127,7 +126,7 @@ static bool checkSortedFile(const std::string& filename) {
     unsigned long key = 0;
     uint32_t len = 0;
 
-    unsigned long prev_key = -1;
+    unsigned long prev_key = 0;
 
     while(true) {
         read_size = read(fd, &key, sizeof(key));
@@ -303,75 +302,162 @@ static ssize_t appendRecordToFile(const std::string& filename, Record record) {
  * @param max_mem The maximum amount of memory to use for reading.
  * @return The number of bytes read from the file.
  */
+// template<typename Container>
+// static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
+//     // std::cout << "[ Warning ] - readRecordsFromFile needs review: it cannot read max_mem, it returns before" << std::endl;
+//     int fd = openFile(filename);
+//     if (lseek(fd, static_cast<off_t>(offset), SEEK_SET) < 0) {
+//         std::cerr << "lseek failed: " << strerror(errno) << std::endl;
+//         close(fd);
+//         exit(EXIT_FAILURE);
+//     }
+
+//     std::vector<char> read_buf(max_mem);
+//     size_t bytes_in_buffer = 0;
+//     size_t buffer_offset = 0;
+//     size_t total_bytes_read = 0;
+
+//     while (total_bytes_read < max_mem) {
+//         if (buffer_offset < bytes_in_buffer) {
+//             size_t remaining = bytes_in_buffer - buffer_offset;
+//             memmove(read_buf.data(), read_buf.data() + buffer_offset, remaining);
+//             bytes_in_buffer = remaining;
+//         } else
+//             bytes_in_buffer = 0;
+
+//         ssize_t read_bytes = read(fd, read_buf.data() + bytes_in_buffer, read_buf.size() - bytes_in_buffer);
+//         if (read_bytes < 0) {
+//             std::cerr << "Read error: " << strerror(errno) << std::endl;
+//             close(fd);
+//             exit(EXIT_FAILURE);
+//         } else if (read_bytes == 0) {
+//             break; // EOF
+//         }
+
+//         bytes_in_buffer += static_cast<size_t>(read_bytes);
+
+//         while (buffer_offset + sizeof(uint64_t) + sizeof(uint32_t) <= bytes_in_buffer) {
+//             const char* base = read_buf.data() + buffer_offset;
+//             uint64_t key = *reinterpret_cast<const uint64_t*>(base);
+//             uint32_t len = *reinterpret_cast<const uint32_t*>(base + sizeof(uint64_t));
+
+//             size_t record_size = sizeof(uint64_t) + sizeof(uint32_t) + static_cast<size_t>(len);
+
+//             if (buffer_offset + record_size > bytes_in_buffer || total_bytes_read + record_size > max_mem)
+//                 goto finish;
+
+//             Record rec;
+//             rec.key = key;
+//             rec.len = len;
+//             rec.rpayload = std::make_unique<char[]>(len);
+//             std::memcpy(rec.rpayload.get(), base + sizeof(uint64_t) + sizeof(uint32_t), len);
+
+//             if constexpr (
+//                 std::is_same_v<Container, std::vector<Record>> ||
+//                 std::is_same_v<Container, std::deque<Record>>) {
+//                 records.push_back(std::move(rec));
+//             } else {
+//                 records.push(std::move(rec));
+//             }
+
+//             buffer_offset += record_size;
+//             total_bytes_read += record_size;
+//         }
+//     }
+
+// finish:
+//     close(fd);
+//     return total_bytes_read;
+// }
+
 template<typename Container>
 static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
-
     int fd = openFile(filename);
+    if (fd < 0) {
+        std::cerr << "openFile failed for " << filename << ": " << strerror(errno) << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
-    if (lseek(fd, static_cast<off_t>(offset), SEEK_SET) < 0) {
-        std::cerr << "lseek failed: " << strerror(errno) << std::endl;
+    // Get file size
+    struct stat st;
+    if (fstat(fd, &st) < 0) {
+        std::cerr << "fstat failed: " << strerror(errno) << std::endl;
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+    size_t file_size = static_cast<size_t>(st.st_size);
+    if (offset >= file_size) {
+        close(fd);
+        return 0; // nothing to read
+    }
+
+    // Page-align the mmap region
+    const long page_size = sysconf(_SC_PAGESIZE);
+    size_t page_mask = static_cast<size_t>(page_size - 1);
+    size_t map_offset = offset & ~page_mask;                    // align down
+    size_t start_in_map = offset - map_offset;                  // where parsing starts within map
+    size_t max_map_len = std::min(max_mem + start_in_map, file_size - map_offset);
+    if (max_map_len == 0) {
+        close(fd);
+        return 0;
+    }
+
+    void* mapped = mmap(nullptr, max_map_len, PROT_READ, MAP_PRIVATE, fd, static_cast<off_t>(map_offset));
+    if (mapped == MAP_FAILED) {
+        std::cerr << "mmap failed: " << strerror(errno) << std::endl;
         close(fd);
         exit(EXIT_FAILURE);
     }
 
-    std::vector<char> read_buf(max_mem);
-    size_t bytes_in_buffer = 0;
-    size_t buffer_offset = 0;
-    size_t total_bytes_read = 0;
+    const char* base = static_cast<const char*>(mapped);
+    size_t pos = start_in_map;
+    size_t total_bytes_parsed = 0;
 
-    while (total_bytes_read < max_mem) {
-        if (buffer_offset < bytes_in_buffer) {
-            size_t remaining = bytes_in_buffer - buffer_offset;
-            memmove(read_buf.data(), read_buf.data() + buffer_offset, remaining);
-            bytes_in_buffer = remaining;
-        } else
-            bytes_in_buffer = 0;
+    // Parse loop
+    while (true) {
+        // need at least key + len
+        if (pos + sizeof(uint64_t) + sizeof(uint32_t) > max_map_len) break;
 
-        ssize_t read_bytes = read(fd, read_buf.data() + bytes_in_buffer, read_buf.size() - bytes_in_buffer);
-        if (read_bytes < 0) {
-            std::cerr << "Read error: " << strerror(errno) << std::endl;
-            close(fd);
-            exit(EXIT_FAILURE);
-        } else if (read_bytes == 0) {
-            break; // EOF
+        uint64_t key;
+        uint32_t len;
+
+        // use memcpy to avoid unaligned access UB
+        std::memcpy(&key, base + pos, sizeof(key));
+        std::memcpy(&len, base + pos + sizeof(key), sizeof(len));
+
+        size_t record_size = sizeof(uint64_t) + sizeof(uint32_t) + static_cast<size_t>(len);
+
+        // If record would cross mapped region or exceed allowed max_mem, stop
+        if (pos + record_size > max_map_len) break;
+        if (total_bytes_parsed + record_size > max_mem) break;
+
+        // Create Record and copy payload
+        Record rec;
+        rec.key = key;
+        rec.len = len;
+        rec.rpayload = std::make_unique<char[]>(len);
+        std::memcpy(rec.rpayload.get(), base + pos + sizeof(uint64_t) + sizeof(uint32_t), len);
+
+        if constexpr (
+            std::is_same_v<Container, std::vector<Record>> ||
+            std::is_same_v<Container, std::deque<Record>>) {
+            records.push_back(std::move(rec));
+        } else {
+            records.push(std::move(rec)); // for e.g. priority_queue
         }
 
-        bytes_in_buffer += static_cast<size_t>(read_bytes);
-
-        while (buffer_offset + sizeof(uint64_t) + sizeof(uint32_t) <= bytes_in_buffer) {
-            const char* base = read_buf.data() + buffer_offset;
-            uint64_t key = *reinterpret_cast<const uint64_t*>(base);
-            uint32_t len = *reinterpret_cast<const uint32_t*>(base + sizeof(uint64_t));
-
-            size_t record_size = sizeof(uint64_t) + sizeof(uint32_t) + static_cast<size_t>(len);
-
-            if (buffer_offset + record_size > bytes_in_buffer || total_bytes_read + record_size > max_mem)
-                goto finish;
-
-            Record rec;
-            rec.key = key;
-            rec.len = len;
-            rec.rpayload = std::make_unique<char[]>(len);
-            std::memcpy(rec.rpayload.get(), base + sizeof(uint64_t) + sizeof(uint32_t), len);
-
-            if constexpr (
-                std::is_same_v<Container, std::vector<Record>> ||
-                std::is_same_v<Container, std::deque<Record>>) {
-                records.push_back(std::move(rec));
-            } else {
-                records.push(std::move(rec));
-            }
-
-            buffer_offset += record_size;
-            total_bytes_read += record_size;
-        }
+        pos += record_size;
+        total_bytes_parsed += record_size;
     }
 
-finish:
+    // unmap and close
+    if (munmap(mapped, max_map_len) < 0) {
+        std::cerr << "munmap failed: " << strerror(errno) << std::endl;
+        // non-fatal: continue
+    }
     close(fd);
-    return total_bytes_read;
+    return total_bytes_parsed;
 }
-
 
 /**
  * Find files in a directory with a given prefix.

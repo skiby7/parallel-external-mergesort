@@ -1,0 +1,330 @@
+#ifndef _FF_SORT_HPP
+#define _FF_SORT_HPP
+
+#include "common.hpp"
+#include "config.hpp"
+#include "hpc_helpers.hpp"
+#include "sorting.hpp"
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <filesystem>
+#include <ff/ff.hpp>
+#include <ff/pipeline.hpp>
+#include <iostream>
+#include <iterator>
+#include <string>
+#include <unistd.h>
+#include <vector>
+#include <memory_resource>
+#include <array>
+
+// Use stack allocation and value semantics to eliminate new/delete overhead
+struct sort_task_t {
+    std::string filename;
+    size_t start;
+    size_t size;
+    size_t memory;
+    size_t w_id;
+    std::vector<std::string> run_files;
+
+    // Pre-reserve space to avoid reallocations
+    sort_task_t() { run_files.reserve(10); }
+};
+
+struct merge_task_t {
+    std::vector<std::string> files;
+    std::string output;
+    size_t memory;
+
+    merge_task_t() { files.reserve(20); }
+};
+
+enum class WorkType : uint8_t { SORT, MERGE, POISON };
+
+// Use value semantics instead of pointers to eliminate allocation overhead
+struct work_t {
+    WorkType type;
+    sort_task_t sort_task;
+    merge_task_t merge_task;
+
+    work_t() : type(WorkType::POISON) {}
+    work_t(sort_task_t&& st) : type(WorkType::SORT), sort_task(std::move(st)) {}
+    work_t(merge_task_t&& mt) : type(WorkType::MERGE), merge_task(std::move(mt)) {}
+};
+
+// Memory pool for work_t objects to eliminate allocation overhead
+class WorkPool {
+private:
+    std::vector<work_t> pool;
+    std::atomic<size_t> next_free{0};
+    std::atomic<size_t> pool_size{0};
+    static constexpr size_t INITIAL_POOL_SIZE = 1000;
+
+public:
+    WorkPool() {
+        pool.resize(INITIAL_POOL_SIZE);
+        pool_size = INITIAL_POOL_SIZE;
+    }
+
+    work_t* get_work() {
+        size_t idx = next_free.fetch_add(1, std::memory_order_relaxed);
+        if (idx < pool_size.load(std::memory_order_acquire)) {
+            return &pool[idx];
+        }
+        // Fallback to heap allocation if pool exhausted (should rarely happen)
+        return new work_t();
+    }
+
+    void reset() {
+        next_free.store(0, std::memory_order_release);
+    }
+
+    bool is_from_pool(work_t* work) {
+        return work >= pool.data() && work < pool.data() + pool_size.load();
+    }
+};
+
+// Global work pool - avoiding thread-local to reduce complexity
+static WorkPool g_work_pool;
+
+struct Master : ff::ff_monode_t<work_t> {
+    size_t current_level;
+    std::vector<size_t> submitted_sort_tasks;
+    std::vector<std::vector<std::string>> run_files;
+    std::vector<std::string> merge_files;
+    size_t merge_count;
+    size_t pending_merges;
+    size_t expected_merges;
+    size_t nworkers;
+    std::string filename;
+    std::string run_prefix;
+    std::string merge_prefix;
+    std::string output_file;
+
+    // Pre-allocate vectors to avoid reallocations
+    std::vector<sort_task_t> sort_tasks_buffer;
+
+    Master(std::string filename, std::string base_path) :
+        current_level(0), submitted_sort_tasks(0), merge_count(0), pending_merges(0),
+        expected_merges(0), nworkers(NTHREADS-1), filename(filename), run_prefix(base_path+"/run#"),
+        merge_prefix(base_path+"/merge#"), output_file(base_path+"/output.dat") {
+
+        // Pre-allocate vectors
+        submitted_sort_tasks.resize(nworkers);
+        run_files.resize(nworkers);
+        sort_tasks_buffer.reserve(nworkers * 4);  // Estimate
+        merge_files.reserve(nworkers);
+
+        // Reset work pool
+        g_work_pool.reset();
+    }
+
+    void kill_threads(size_t expected_merges) {
+        while (nworkers > expected_merges) {
+            work_t* poison = g_work_pool.get_work();
+            poison->type = WorkType::POISON;
+            ff_send_out_to(poison, --nworkers);
+        }
+    }
+
+    void send_out_sort_tasks() {
+        size_t file_size = getFileSize(filename);
+        // Smaller chunks for better load balancing, but not too small to avoid overhead
+        size_t chunk_size = std::max(file_size / (nworkers * 3), static_cast<size_t>(1024 * 1024));
+
+        int fd = openFile(filename);
+        std::vector<char> buffer(MAX_MEMORY / nworkers);
+        size_t buffer_offset = 0, file_offset = 0, logical_start = 0, logical_end = 0;
+        size_t bytes_in_buffer = 0;
+        size_t worker_id = 0;
+
+        while (true) {
+            // Shift leftover bytes
+            if (buffer_offset < bytes_in_buffer) {
+                memmove(buffer.data(), buffer.data() + buffer_offset, bytes_in_buffer - buffer_offset);
+                bytes_in_buffer -= buffer_offset;
+            } else {
+                bytes_in_buffer = 0;
+            }
+            buffer_offset = 0;
+
+            ssize_t bytes_read = read(fd, buffer.data() + bytes_in_buffer, buffer.size() - bytes_in_buffer);
+            if (bytes_read < 0) {
+                std::cerr << "Read error: " << strerror(errno) << std::endl;
+                close(fd);
+                return;
+            } else if (bytes_read == 0 && bytes_in_buffer == 0) {
+                break; // EOF
+            }
+            bytes_in_buffer += bytes_read;
+
+            // Parse complete records
+            while (buffer_offset + sizeof(uint64_t) + sizeof(uint32_t) <= bytes_in_buffer) {
+                size_t local_offset = buffer_offset;
+
+                buffer_offset += sizeof(uint64_t); // skip key
+
+                uint32_t len = *reinterpret_cast<uint32_t*>(&buffer[buffer_offset]);
+                buffer_offset += sizeof(uint32_t);
+
+                if (buffer_offset + len > bytes_in_buffer) {
+                    buffer_offset = local_offset;
+                    break;
+                }
+
+                buffer_offset += len;
+                logical_end = file_offset + buffer_offset;
+
+                if (logical_end - logical_start >= chunk_size) {
+                    size_t size = logical_end - logical_start;
+
+                    // Create sort task using value semantics
+                    sort_task_t task;
+                    task.filename = filename;
+                    task.start = logical_start;
+                    task.size = size;
+                    task.memory = MAX_MEMORY / nworkers;
+                    task.w_id = worker_id;
+
+                    work_t* work = g_work_pool.get_work();
+                    *work = work_t(std::move(task));
+
+                    ff_send_out_to(work, worker_id);
+                    submitted_sort_tasks[worker_id]++;
+                    worker_id = (worker_id + 1) % nworkers;
+                    logical_start = logical_end;
+                }
+            }
+
+            file_offset += buffer_offset;
+        }
+
+        // Emit remaining bytes
+        if (logical_end > logical_start) {
+            size_t size = logical_end - logical_start;
+
+            sort_task_t task;
+            task.filename = filename;
+            task.start = logical_start;
+            task.size = size;
+            task.memory = MAX_MEMORY / nworkers;
+            task.w_id = worker_id;
+
+            work_t* work = g_work_pool.get_work();
+            *work = work_t(std::move(task));
+
+            ff_send_out_to(work, worker_id);
+            submitted_sort_tasks[worker_id]++;
+        }
+
+        close(fd);
+    }
+
+    work_t* svc(work_t* task) {
+        if (!task) {
+            send_out_sort_tasks();
+            return GO_ON;
+        }
+
+        if (task->type == WorkType::SORT) {
+            size_t w_id = task->sort_task.w_id;
+
+            // Move run files efficiently
+            auto& worker_runs = run_files[w_id];
+            worker_runs.insert(worker_runs.end(),
+                             std::make_move_iterator(task->sort_task.run_files.begin()),
+                             std::make_move_iterator(task->sort_task.run_files.end()));
+
+            if (--submitted_sort_tasks[w_id] == 0) {
+                if (worker_runs.size() == 1) {
+                    merge_files.push_back(std::move(worker_runs[0]));
+                } else {
+                    merge_task_t merge_task;
+                    merge_task.files = std::move(worker_runs);
+                    merge_task.output = merge_prefix + generateUUID();
+                    merge_task.memory = MAX_MEMORY / nworkers;
+
+                    work_t* merge_work = g_work_pool.get_work();
+                    *merge_work = work_t(std::move(merge_task));
+
+                    ff_send_out_to(merge_work, w_id);
+                    expected_merges++;
+                }
+            }
+
+            // Clean up work object
+            if (g_work_pool.is_from_pool(task)) {
+                // Reset for reuse if from pool
+                task->type = WorkType::POISON;
+                task->sort_task.run_files.clear();
+            } else {
+                delete task;
+            }
+            return GO_ON;
+
+        } else if (task->type == WorkType::MERGE) {
+            merge_count++;
+            merge_files.push_back(std::move(task->merge_task.output));
+
+            auto all_finished = std::all_of(
+                submitted_sort_tasks.begin(), submitted_sort_tasks.end(),
+                [](const auto& count) { return count == 0; });
+
+            if (merge_count == expected_merges && all_finished) {
+                kWayMergeFiles(merge_files, output_file, MAX_MEMORY);
+
+                // Clean up
+                if (g_work_pool.is_from_pool(task)) {
+                    task->type = WorkType::POISON;
+                } else {
+                    delete task;
+                }
+                return EOS;
+            }
+
+            // Clean up work object
+            if (g_work_pool.is_from_pool(task)) {
+                task->type = WorkType::POISON;
+                task->merge_task.files.clear();
+            } else {
+                delete task;
+            }
+            return GO_ON;
+        }
+
+        // Handle poison pill or cleanup
+        if (!g_work_pool.is_from_pool(task)) {
+            delete task;
+        }
+        return EOS;
+    }
+};
+
+struct WorkerNode : ff::ff_node_t<work_t> {
+    std::string run_prefix;
+
+    WorkerNode(std::string base_path) : run_prefix(base_path+"/run#") {}
+
+    work_t* svc(work_t* work) {
+        if (work->type == WorkType::POISON) {
+            return EOS;
+        }
+
+        if (work->type == WorkType::SORT) {
+            work->sort_task.run_files = genSortedRunsWithSort(
+                work->sort_task.filename,
+                work->sort_task.start,
+                work->sort_task.size,
+                work->sort_task.memory,
+                run_prefix + generateUUID());
+        } else if (work->type == WorkType::MERGE) {
+            kWayMergeFiles(work->merge_task.files, work->merge_task.output, work->merge_task.memory);
+        }
+
+        ff_send_out(work);
+        return GO_ON;
+    }
+};
+
+#endif // !_FF_SORT_HPP

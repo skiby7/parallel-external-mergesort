@@ -29,6 +29,7 @@ static void ompBinaryMerge(const std::vector<std::string>& sequences,
     #pragma omp parallel for
     for (size_t i = 0; i < input.size(); i += 2) {
         std::string filename = merge_prefix + generateUUID();
+        std::cout << "Merging two files" << std::endl;
         mergeFiles(input[i], input[i + 1], filename, MAX_MEMORY / num_threads);
         #pragma omp critical
         levels[0].push_back(filename);

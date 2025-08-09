@@ -138,7 +138,7 @@ fig.update_layout(
     yaxis_title="Speedup",
     template="plotly_white"
 )
-# fig.show()
+fig.show()
 
 # === Sequential binary vs k-way ===
 fig2 = go.Figure(data=[
@@ -150,7 +150,7 @@ fig2.update_layout(
     yaxis_title="Time (s)",
     template="plotly_white"
 )
-# fig2.show()
+fig2.show()
 
 # === Separate plot: MPI-weak actual vs ideal ===
 # For weak scaling, ideal speedup grows linearly with the number of nodes
@@ -181,7 +181,7 @@ fig_weak.update_layout(
     yaxis_title="Speedup",
     template="plotly_white"
 )
-# fig_weak.show()
+fig_weak.show()
 
 print(threads_all)
 print("OMP")

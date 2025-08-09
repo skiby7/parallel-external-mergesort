@@ -17,7 +17,7 @@ int main(int argc, char *argv[]) {
     farm.add_emitter(&m);
 
     std::vector<ff::ff_node*> W;
-    for (size_t i = 0; i < NTHREADS; i++)
+    for (size_t i = 0; i < NTHREADS-1; i++)
         W.push_back(new WorkerNode(p.parent_path().string()));
 
     farm.add_workers(W);

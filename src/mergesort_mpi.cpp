@@ -18,6 +18,8 @@ int main(int argc, char *argv[]) {
         return -1;
     std::string filename = argv[start];
 
+    size_t file_size = getFileSize(filename);
+    MAX_MEMORY = std::min(MAX_MEMORY, file_size + (file_size/10));
     int rank, size;
     int provided;
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);

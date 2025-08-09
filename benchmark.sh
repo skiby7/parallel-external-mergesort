@@ -33,13 +33,13 @@ genFile() {
     $SRUN rm -f $INPUT_FILE
     $SRUN ./gen_file -r $PAYLOAD_SIZE -s $ITEMS_COUNT $INPUT_FILE
     FILESIZE=$($SRUN stat -c%s $INPUT_FILE)
-    ONE_THIRD_FILESIZE=$((FILESIZE/3)) # Simulating memory constraints
+    FILESIZE_FRAC=$((FILESIZE/10)) # Simulating memory constraints
     AVAIL_MEM=$($SRUN free -b | awk '/Mem:/ { print $7 }')
     MAX_MEMORY=$((32 * 1024 * 1024 * 1024)) # 32GB
     # Once set it is never updated to make sure that every test runs with the same memory constraints
     if [ -z "$USABLE_MEM" ]; then
       USABLE_MEM=$(
-        echo "$ONE_THIRD_FILESIZE $AVAIL_MEM $MAX_MEMORY" |
+        echo "$FILESIZE_FRAC $AVAIL_MEM $MAX_MEMORY" |
         awk '{ min = $1; for (i = 2; i <= NF; i++) if ($i < min) min = $i; print min }'
       )
     fi

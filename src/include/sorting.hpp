@@ -151,7 +151,7 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
     std::priority_queue<
                std::pair<Record, size_t>,
                std::vector<std::pair<Record, size_t>>,
-               PairRecordComparator
+               HeapPairRecordComparator
            > min_heap;
 
     // Prime the heap
@@ -221,7 +221,7 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
  * @param max_memory The maximum memory to use.
  * @param output_filename_prefix The prefix for the output file names.
  */
-static void genSequenceFiles(
+static std::vector<std::string> genSequenceFiles(
     const std::string& input_filename,
     size_t offset,
     size_t bytes_to_process,
@@ -232,12 +232,12 @@ static void genSequenceFiles(
     std::vector<Record> unsorted;
     std::deque<Record> output_buffer;
     size_t output_buffer_size = 0;
-    std::priority_queue<Record, std::vector<Record>, RecordComparator> heap;
+    std::priority_queue<Record, std::vector<Record>, HeapRecordComparator> heap;
     size_t heap_batch_size = 0;
     std::vector<Record> buffer;
     int fd;
     size_t io_offset = 0;
-
+    std::vector<std::string> output_files;
     // Skip the unsorted initialization and push the records directly to the heap
     ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, std::min(usable_mem, bytes_to_process));
     ssize_t run = 1, curr_offset = offset + bytes_read, free_bytes = usable_mem - bytes_read, last_read = bytes_read;
@@ -245,6 +245,8 @@ static void genSequenceFiles(
 
     while (bytes_remaining > 0 || !heap.empty() || !unsorted.empty()) { // I have to process all the bytes in the file
         std::string output_filename = output_filename_prefix + std::to_string(run);
+        output_files.push_back(output_filename);
+
         fd = openFile(output_filename);
         bytes_remaining = bytes_to_process - bytes_read;
 
@@ -299,6 +301,7 @@ static void genSequenceFiles(
         close(fd);
         run++;
     }
+    return output_files;
 }
 
 /**
@@ -312,7 +315,7 @@ static void genSequenceFiles(
  * @param max_memory The maximum memory to use.
  * @param output_filename_prefix The prefix for the output file names.
  */
-static void genSortedRunsWithSort(
+static std::vector<std::string> genSortedRunsWithSort(
     const std::string& input_filename,
     size_t offset,
     size_t bytes_to_process,
@@ -323,28 +326,30 @@ static void genSortedRunsWithSort(
     size_t bytes_read = 0;
     size_t curr_offset = offset;
     size_t run = 1;
+    std::vector<std::string> output_files;
 
     while (bytes_read < bytes_to_process) {
         std::vector<Record> buffer;
         size_t chunk_size = std::min(usable_mem, bytes_to_process - bytes_read);
         ssize_t actual_bytes_read = readRecordsFromFile(input_filename, buffer, curr_offset, chunk_size);
-
         if (actual_bytes_read <= 0) break;
 
         curr_offset += actual_bytes_read;
         bytes_read += actual_bytes_read;
 
         std::sort(buffer.begin(), buffer.end(), RecordComparator{});
-
         std::string output_filename = output_filename_prefix + std::to_string(run);
+        output_files.push_back(output_filename);
         int fd = openFile(output_filename);
 
         // Reuse your existing appendToFile logic, or adapt to vector
         appendToFile(fd, std::move(buffer), actual_bytes_read);
+
         close(fd);
 
         run++;
     }
+    return output_files;
 }
 
 #endif // _SORTING_HPP

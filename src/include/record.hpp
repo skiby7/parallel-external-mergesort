@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <iostream>
+#include <iomanip>
 
 typedef struct _Record {
     unsigned long key;
@@ -58,17 +60,46 @@ typedef struct _Record {
     bool operator >= (const _Record &a) const { return key >= a.key; }
     bool operator > (const _Record &a) const { return key > a.key; }
 
+    friend std::ostream& operator<<(std::ostream& os, const _Record& rec) {
+        os << "Record{ key=" << rec.key
+           << ", len=" << rec.len
+           << ", payload=";
+
+        // Print payload as hex (safe for binary data)
+        os << std::hex << std::setfill('0');
+        for (uint32_t i = 0; i < rec.len; ++i) {
+            os << std::setw(2) << (static_cast<unsigned int>(
+                      static_cast<unsigned char>(rec.rpayload[i])))
+               << " ";
+        }
+        os << std::dec; // restore to decimal output
+
+        os << "}";
+        return os;
+    }
 } Record;
 
-struct RecordComparator {
+struct HeapRecordComparator {
     bool operator()(Record a, Record b){
         return (a.key > b.key);
     }
 };
 
-struct PairRecordComparator {
+struct HeapPairRecordComparator {
     bool operator()(const std::pair<Record, size_t>& a, const std::pair<Record, size_t>& b) const {
         return a.first > b.first;
+    }
+};
+
+struct RecordComparator {
+    bool operator()(Record a, Record b){
+        return (a.key < b.key);
+    }
+};
+
+struct PairRecordComparator {
+    bool operator()(const std::pair<Record, size_t>& a, const std::pair<Record, size_t>& b) const {
+        return a.first < b.first;
     }
 };
 

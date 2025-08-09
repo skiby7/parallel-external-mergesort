@@ -117,12 +117,14 @@ int main(int argc, char *argv[]) {
     if((start = parseCommandLine(argc, argv)) < 0) return -1;
     omp_set_num_threads(NTHREADS);
     std::string filename = argv[start];
+    MAX_MEMORY = std::min(MAX_MEMORY, getFileSize(filename));
     std::filesystem::path p(filename);
     std::string run_prefix = p.parent_path().string() + "/run#";
     std::string merge_prefix = p.parent_path().string() + "/merge#";
     std::string output_file = p.parent_path().string() + "/output.dat";
     TIMERSTART(mergesort_omp)
     computeChunksAndProcess(filename, omp_get_max_threads(), run_prefix);
+
     ompMerge(run_prefix, merge_prefix, output_file);
     // if (KWAY_MERGE) {
     //     ompMerge(run_prefix, merge_prefix, output_file);
@@ -131,6 +133,5 @@ int main(int argc, char *argv[]) {
     // }
     TIMERSTOP(mergesort_omp)
 
-    // assert(checkSortedFile(output_file));
     return 0;
 }
