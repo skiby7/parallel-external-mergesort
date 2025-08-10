@@ -46,7 +46,6 @@ int main(int argc, char *argv[]) {
     if ((start = parseCommandLine(argc, argv)) < 0)
         return -1;
     std::string filename = argv[start];
-
     size_t file_size = getFileSize(filename);
     MAX_MEMORY = std::min(MAX_MEMORY, file_size + (file_size/10));
     std::filesystem::path p(filename);

@@ -15,7 +15,8 @@
 
 void computeChunksAndProcess(const std::string& filename, size_t num_threads, const std::string& run_prefix) {
     size_t file_size = getFileSize(filename);
-    size_t chunk_size = file_size / (num_threads*num_threads); // Create more tasks to make the cpu usage higher and feed all the threads
+    // size_t chunk_size = file_size / (num_threads*num_threads); // Create more tasks to make the cpu usage higher and feed all the threads
+    size_t chunk_size = std::max(file_size / (num_threads * 3), static_cast<size_t>(1024 * 1024));
 
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) {
@@ -117,7 +118,8 @@ int main(int argc, char *argv[]) {
     if((start = parseCommandLine(argc, argv)) < 0) return -1;
     omp_set_num_threads(NTHREADS);
     std::string filename = argv[start];
-    MAX_MEMORY = std::min(MAX_MEMORY, getFileSize(filename));
+    size_t file_size = getFileSize(filename);
+    MAX_MEMORY = std::min(MAX_MEMORY, file_size + (file_size/10));
     std::filesystem::path p(filename);
     std::string run_prefix = p.parent_path().string() + "/run#";
     std::string merge_prefix = p.parent_path().string() + "/merge#";
@@ -126,11 +128,7 @@ int main(int argc, char *argv[]) {
     computeChunksAndProcess(filename, omp_get_max_threads(), run_prefix);
 
     ompMerge(run_prefix, merge_prefix, output_file);
-    // if (KWAY_MERGE) {
-    //     ompMerge(run_prefix, merge_prefix, output_file);
-    // } else {
-    //     ompBinaryMerge(findFiles(run_prefix), merge_prefix, output_file);
-    // }
+
     TIMERSTOP(mergesort_omp)
 
     return 0;

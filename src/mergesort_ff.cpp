@@ -9,9 +9,9 @@ int main(int argc, char *argv[]) {
     int start = 0;
     if((start = parseCommandLine(argc, argv)) < 0) return -1;
     std::string filename = argv[start];
-
+    size_t file_size = getFileSize(filename);
+    MAX_MEMORY = std::min(MAX_MEMORY, file_size + (file_size/10));
     std::filesystem::path p(filename);
-
     ff::ff_farm farm;
     Master m(filename, p.parent_path().string());
     farm.add_emitter(&m);
@@ -23,7 +23,8 @@ int main(int argc, char *argv[]) {
     farm.add_workers(W);
     farm.wrap_around();
     farm.cleanup_workers();
-
+    // This improves the performance of the farm making it almost on par with OMP
+    farm.no_mapping();
     TIMERSTART(mergesort_ff);
     if (farm.run_and_wait_end() < 0) {
         std::cout << "Error running the farm" << std::endl;

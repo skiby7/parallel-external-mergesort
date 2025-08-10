@@ -49,13 +49,14 @@ OUTPUT_FILE=$(dirname $INPUT_FILE)/output.dat
 TIMESTAMP=$(date +%s)
 LOG_FILE=run_${TIMESTAMP}.log
 
-NRUNS=3
+NRUNS=${NRUNS:-3}
 THREAD_COUNTS=(
     2
     4
     6
     8
     10
+    12
     14
     18
     22
@@ -107,12 +108,13 @@ run_seq() {
 }
 
 run_mpi_strong() {
+    LOG_FILE=run_${TIMESTAMP}_mpi_strong.log
+    touch results/$LOG_FILE
     if [[ -z "$SRUN" ]]; then
         return 1
     fi
 
     echo "#################################" | tee -a results/$LOG_FILE
-    LOG_FILE=run_${TIMESTAMP}_mpi_strong.log
     NTHREADS=32 # Using the best speedup from the single node version
     for i in "${NODE_COUNTS[@]}"; do
         NODELIST=$MAIN_NODE
@@ -131,11 +133,12 @@ run_mpi_strong() {
 }
 
 run_mpi_weak() {
+    LOG_FILE=run_${TIMESTAMP}_mpi_weak.log
+    touch results/$LOG_FILE
     if [[ -z "$SRUN" ]]; then
         return 1
     fi
     INITIAL_ITEMS_COUNT=$ITEMS_COUNT
-    LOG_FILE=run_${TIMESTAMP}_mpi_weak.log
     echo "#################################" | tee -a results/$LOG_FILE
     NTHREADS=32 # Using the best speedup from the single node version
     # Now the size is twice the single node version
