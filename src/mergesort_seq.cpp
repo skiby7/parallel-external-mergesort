@@ -2,6 +2,8 @@
 #include "include/config.hpp"
 #include "include/hpc_helpers.hpp"
 #include "include/sorting.hpp"
+#include <filesystem>
+#include <fstream>
 #include <cassert>
 #include <cstdio>
 #include <filesystem>

@@ -172,6 +172,8 @@ struct Master : ff::ff_monode_t<work_t> {
                         MAX_MEMORY/nworkers}}, task->sort_task->w_id);
                     expected_merges++;
                 }
+                expected_merges = level_0.size(); // Every thread merges a group
+                levels.push_back(std::move(level_0));
             }
             delete task->sort_task;
             delete task;

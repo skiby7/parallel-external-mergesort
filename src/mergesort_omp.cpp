@@ -126,9 +126,7 @@ int main(int argc, char *argv[]) {
     std::string output_file = p.parent_path().string() + "/output.dat";
     TIMERSTART(mergesort_omp)
     computeChunksAndProcess(filename, omp_get_max_threads(), run_prefix);
-
     ompMerge(run_prefix, merge_prefix, output_file);
-
     TIMERSTOP(mergesort_omp)
 
     return 0;
