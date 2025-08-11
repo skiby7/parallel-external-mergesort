@@ -33,6 +33,9 @@ seq_binary_times = []
 seq_kway_times   = []
 omp_times        = defaultdict(list)
 ff_times         = defaultdict(list)
+ff_nm_times      = defaultdict(list)
+
+
 
 for header, body in re.findall(section_pattern, logs['seq'], re.MULTILINE):
     if 'sequential binary' in header:
@@ -48,6 +51,8 @@ for header, body in re.findall(section_pattern, logs['seq'], re.MULTILINE):
                 omp_times[nthreads].append(float(t))
             elif algo == 'mergesort_ff':
                 ff_times[nthreads].append(float(t))
+            elif algo == 'mergesort_ff_no_mapping':
+                ff_nm_times[nthreads].append(float(t))
 
 seq_binary_avg = np.mean(seq_binary_times)
 seq_kway_avg   = np.mean(seq_kway_times)
@@ -55,9 +60,11 @@ best_seq       = min(seq_binary_avg, seq_kway_avg)
 
 omp_avg      = {t: np.mean(v) for t, v in omp_times.items()}
 ff_avg       = {t: np.mean(v) for t, v in ff_times.items()}
+ff_nm_avg    = {t: np.mean(v) for t, v in ff_nm_times.items()}
 omp_speedup  = {t: best_seq/v for t, v in omp_avg.items()}
 ff_speedup   = {t: best_seq/v for t, v in ff_avg.items()}
-threads_all  = sorted(set(omp_speedup) | set(ff_speedup))
+ff_nm_speedup= {t: best_seq/v for t, v in ff_nm_avg.items()}
+threads_all  = sorted(set(omp_speedup) | set(ff_speedup) | set(ff_nm_speedup))
 
 # --- 2) MPI-strong scaling – by nnodes ---
 mpi_strong = defaultdict(list)
@@ -86,14 +93,16 @@ for header, body in re.findall(section_pattern, logs['mpi_weak'], re.MULTILINE):
 
 # sort and pick first as baseline
 weak_entries.sort(key=lambda x: x[0])
-base_nodes, base_fs, base_time = weak_entries[0]
-
+nodes_weak = []
 mpi_weak_speedup = {}
-for nn, fs, t in weak_entries:
-    t_ideal = base_time * (fs / base_fs)
-    mpi_weak_speedup[nn] = t_ideal / t
+if len(weak_entries) > 0:
+    base_nodes, base_fs, base_time = weak_entries[0]
 
-nodes_weak = sorted(mpi_weak_speedup)
+    for nn, fs, t in weak_entries:
+        t_ideal = base_time * (fs / base_fs)
+        mpi_weak_speedup[nn] = t_ideal / t
+
+    nodes_weak = sorted(mpi_weak_speedup)
 
 
 # === Plot everything together ===
@@ -111,6 +120,13 @@ fig.add_trace(go.Scatter(
     y=[ff_speedup[t] for t in threads_all],
     mode='lines+markers',
     name='FastFlow'
+))
+
+fig.add_trace(go.Scatter(
+    x=threads_all,
+    y=[ff_nm_speedup[t] for t in threads_all],
+    mode='lines+markers',
+    name='FastFlow (with no mapping)'
 ))
 
 # MPI strong
@@ -188,6 +204,8 @@ print("OMP")
 print(tuple([round(i, 2) for i in omp_speedup.values()]))
 print("FastFlow")
 print(tuple([round(i, 2) for i in ff_speedup.values()]))
+print("FastFlow (with no mapping)")
+print(tuple([round(i, 2) for i in ff_nm_speedup.values()]))
 print("MPI Strong")
 print(tuple([round(i, 2) for i in mpi_strong_speedup.values()]))
 print("MPI Weak")

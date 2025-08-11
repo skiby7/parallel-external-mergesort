@@ -23,9 +23,14 @@ static void worker(std::string tmp_location) {
     // std::priority_queue<Record, std::vector<Record>, RecordComparator> records;
     std::vector<Record> records;
     std::vector<char> send_buf;
-    std::string run_prefix = tmp_location + "/run#";
-    std::string merge_prefix = tmp_location + "/merge#";
-    std::string output_file = tmp_location + "/output.dat";
+    std::filesystem::path tmp_path = tmp_location + "/" + generateUUID();
+    if (!std::filesystem::create_directories(tmp_path)) {
+        std::cerr << "Canot create " << tmp_path << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    std::string run_prefix = tmp_path.string() + "/run#";
+    std::string merge_prefix = tmp_path.string() + "/merge#";
+    std::string output_file = tmp_path.string() + "/output.dat";
 
     while (true) {
         MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -89,7 +94,7 @@ static void worker(std::string tmp_location) {
     // Done sending the sorted file, bye bye
     MPI_Send(&done, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
     // It is now responsibility of the master to merge the remaining files
-    deleteFile(output_file.c_str()); // Cleanup
+    std::filesystem::remove_all(tmp_path); // Cleanup
 }
 
 #endif // _MPI_WORKER_HPP

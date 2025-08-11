@@ -16,9 +16,10 @@ static inline void usage(const char *argv0) {
     std::printf("Usage: %s [options]\n", argv0);
     std::printf("\nOptions:\n");
     std::printf(" -t T: number of threads (default=%d)\n", NTHREADS);
-    std::printf(" -k: use k-way merge in the sequential version (default=%d)\n", KWAY_MERGE ? 1 :0);
+    std::printf(" -k: use k-way merge in the sequential version (default=%s)\n", KWAY_MERGE ? "true" : "false");
     std::printf(" -m M: set the max memory usage (default=%ld)\n", MAX_MEMORY);
     std::printf(" -p string: set the tmp location for the worker nodes (MPI) (default=%s)\n", TMP_LOCATION);
+    std::printf(" -x: set FF_NO_MAPPING variable to false (default=%s)\n", FF_NO_MAPPING ? "true" : "false");
     std::printf("--------------------\n");
     /**
      * These options are still relevant for the generation of the file,
@@ -44,13 +45,18 @@ static bool isNumber(const char* s, long &n) {
 
 static inline int parseCommandLine(int argc, char *argv[]) {
     extern char *optarg;
-    const std::string optstr = "r:s:t:d:m:p:k";
+    const std::string optstr = "r:s:t:d:m:p:kx";
     long opt, start = 1;
 
     while ((opt = getopt(argc, argv, optstr.c_str())) != -1) {
         switch (opt) {
             case 'k': {
                 KWAY_MERGE = true;
+                start += 1;
+            } break;
+
+            case 'x': {
+                FF_NO_MAPPING = false;
                 start += 1;
             } break;
             case 'p': {
@@ -108,16 +114,6 @@ static inline int parseCommandLine(int argc, char *argv[]) {
                 start += 2;
             } break;
 
-            case 'x': {
-                long x = 0;
-                if (!isNumber(optarg, x) || x < 1) {
-                    std::fprintf(stderr, "Error: wrong '-x' option\n");
-                    usage(argv[0]);
-                    return -1;
-                }
-                SORT_THRESHOLD = x;
-                start += 2;
-            } break;
             default:
                 usage(argv[0]);
                 return -1;

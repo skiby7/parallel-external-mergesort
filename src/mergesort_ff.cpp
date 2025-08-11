@@ -1,9 +1,23 @@
+#include <string>
 #include <vector>
 #include "include/cmdline.hpp"
+#include "include/config.hpp"
 #include "include/hpc_helpers.hpp"
 #include "include/ff_sort.hpp"
 #include <ff/ff.hpp>
 #include <filesystem>
+#include <chrono>
+
+std::chrono::time_point<std::chrono::system_clock> start, end;
+inline void timer_start() {
+    start = std::chrono::system_clock::now();
+}
+
+inline void timer_stop(std::string label) {
+    end = std::chrono::system_clock::now();
+    std::chrono::duration<double> delta = end-start;
+    std::cout << "# elapsed time ("<< label <<"): " << delta.count() << "s" << std::endl;
+}
 
 int main(int argc, char *argv[]) {
     int start = 0;
@@ -24,12 +38,14 @@ int main(int argc, char *argv[]) {
     farm.wrap_around();
     farm.cleanup_workers();
     // This improves the performance of the farm making it almost on par with OMP
-    farm.no_mapping();
-    TIMERSTART(mergesort_ff);
+    if (FF_NO_MAPPING) // Def vaule is true
+        farm.no_mapping();
+
+    timer_start();
     if (farm.run_and_wait_end() < 0) {
         std::cout << "Error running the farm" << std::endl;
     }
-    TIMERSTOP(mergesort_ff);
+    timer_stop(FF_NO_MAPPING ? "mergesort_ff_no_mapping" : "mergesort_ff");
 
     // assert(checkSortedFile(p.parent_path().string() + "/output.dat"));
     return 0;

@@ -1,0 +1,58 @@
+
+#################################
+(sequential binary merge, max_mem=)
+# elapsed time (mergesort_seq): 7.26397s
+# elapsed time (mergesort_seq): 7.37415s
+#################################
+(sequential kway merge, max_mem=10649824)
+# elapsed time (mergesort_seq): 6.11016s
+# elapsed time (mergesort_seq): 6.14667s
+#################################
+(nthreads=2, max_mem=10649824)
+# elapsed time (mergesort_omp): 3.94093s
+# elapsed time (mergesort_ff_no_mapping): 7.24858s
+# elapsed time (mergesort_ff): 7.16023s
+# elapsed time (mergesort_omp): 3.97343s
+# elapsed time (mergesort_ff_no_mapping): 7.18104s
+# elapsed time (mergesort_ff): 7.12717s
+#################################
+(nthreads=4, max_mem=10649824)
+# elapsed time (mergesort_omp): 2.52699s
+# elapsed time (mergesort_ff_no_mapping): 3.24694s
+# elapsed time (mergesort_ff): 3.24621s
+# elapsed time (mergesort_omp): 2.65663s
+# elapsed time (mergesort_ff_no_mapping): 3.33302s
+# elapsed time (mergesort_ff): 3.33353s
+#################################
+(nthreads=6, max_mem=10649824)
+# elapsed time (mergesort_omp): 2.24266s
+# elapsed time (mergesort_ff_no_mapping): 2.8311s
+# elapsed time (mergesort_ff): 2.95275s
+# elapsed time (mergesort_omp): 2.59785s
+# elapsed time (mergesort_ff_no_mapping): 2.87352s
+# elapsed time (mergesort_ff): 2.9506s
+#################################
+(nthreads=8, max_mem=10649824)
+# elapsed time (mergesort_omp): 2.42151s
+# elapsed time (mergesort_ff_no_mapping): 3.67701s
+# elapsed time (mergesort_ff): 3.75823s
+# elapsed time (mergesort_omp): 2.29342s
+# elapsed time (mergesort_ff_no_mapping): 3.05348s
+# elapsed time (mergesort_ff): 3.70713s
+#################################
+(nthreads=10, max_mem=10649824)
+# elapsed time (mergesort_omp): 2.44523s
+# elapsed time (mergesort_ff_no_mapping): 3.37144s
+# elapsed time (mergesort_ff): 3.50473s
+# elapsed time (mergesort_omp): 2.239s
+# elapsed time (mergesort_ff_no_mapping): 3.50947s
+# elapsed time (mergesort_ff): 3.49941s
+#################################
+(nthreads=12, max_mem=10649824)
+# elapsed time (mergesort_omp): 2.28372s
+# elapsed time (mergesort_ff_no_mapping): 3.24548s
+# elapsed time (mergesort_ff): 3.90484s
+# elapsed time (mergesort_omp): 2.20669s
+# elapsed time (mergesort_ff_no_mapping): 3.24489s
+# elapsed time (mergesort_ff): 3.37365s
+#################################
