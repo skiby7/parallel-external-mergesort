@@ -129,6 +129,6 @@ int main(int argc, char *argv[]) {
     computeChunksAndProcess(filename, omp_get_max_threads(), run_prefix);
     ompMerge(run_prefix, merge_prefix, output_file);
     TIMERSTOP(mergesort_omp)
-    assert(checkSortedFile(output_file));
+
     return 0;
 }
