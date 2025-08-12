@@ -13,7 +13,7 @@ SRC_DIR = src
 .PHONY: all debug clean cleanall
 .SUFFIXES: .cpp
 
-all: $(TARGETS)
+all: $(TARGETS) gen_file
 
 debug: $(DEBUG_TARGETS)
 
@@ -50,7 +50,7 @@ mergesort_mpi_debug: $(SRC_DIR)/mergesort_mpi.cpp $(SRC_DIR)/include/
 
 
 clean:
-	rm -f $(TARGETS) $(DEBUG_TARGETS)
+	rm -f $(TARGETS) $(DEBUG_TARGETS) gen_file
 
 cleanall: clean
 	rm -f *.o *~ *.csv

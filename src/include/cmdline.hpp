@@ -20,6 +20,7 @@ static inline void usage(const char *argv0) {
     std::printf(" -m M: set the max memory usage (default=%ld)\n", MAX_MEMORY);
     std::printf(" -p string: set the tmp location for the worker nodes (MPI) (default=%s)\n", TMP_LOCATION);
     std::printf(" -x: set FF_NO_MAPPING variable to false (default=%s)\n", FF_NO_MAPPING ? "true" : "false");
+    std::printf(" -w: enables posix writes (default=%s)\n", USE_WRITE ? "true" : "false");
     std::printf("--------------------\n");
     /**
      * These options are still relevant for the generation of the file,
@@ -45,7 +46,7 @@ static bool isNumber(const char* s, long &n) {
 
 static inline int parseCommandLine(int argc, char *argv[]) {
     extern char *optarg;
-    const std::string optstr = "r:s:t:d:m:p:kx";
+    const std::string optstr = "r:s:t:d:m:p:kwx";
     long opt, start = 1;
 
     while ((opt = getopt(argc, argv, optstr.c_str())) != -1) {
@@ -54,7 +55,10 @@ static inline int parseCommandLine(int argc, char *argv[]) {
                 KWAY_MERGE = true;
                 start += 1;
             } break;
-
+            case 'w': {
+                USE_WRITE = true;
+                start += 1;
+            } break;
             case 'x': {
                 FF_NO_MAPPING = false;
                 start += 1;

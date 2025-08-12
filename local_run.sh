@@ -1,5 +1,5 @@
 #!/bin/bash
-PROC_SCALE_FACTOR=$([[ $(nproc) -gt 16 ]] && echo "4" || echo "2"))
+PROC_SCALE_FACTOR=$([[ $(nproc) -gt 16 ]] && echo "4" || echo "2")
 
 MAX_NODES=$(($(nproc) / $PROC_SCALE_FACTOR)) \
 MPI_THREADS=$PROC_SCALE_FACTOR \

@@ -17,6 +17,7 @@ void computeChunksAndProcess(const std::string& filename, size_t num_threads, co
     size_t file_size = getFileSize(filename);
     // size_t chunk_size = file_size / (num_threads*num_threads); // Create more tasks to make the cpu usage higher and feed all the threads
     size_t chunk_size = std::max(file_size / (num_threads * 3), static_cast<size_t>(1024 * 1024));
+    // size_t chunk_size = file_size / num_threads;
 
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) {
@@ -128,6 +129,6 @@ int main(int argc, char *argv[]) {
     computeChunksAndProcess(filename, omp_get_max_threads(), run_prefix);
     ompMerge(run_prefix, merge_prefix, output_file);
     TIMERSTOP(mergesort_omp)
-
+    assert(checkSortedFile(output_file));
     return 0;
 }

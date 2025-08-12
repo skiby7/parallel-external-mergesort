@@ -20,10 +20,12 @@ else
     SRUN=""
 fi
 
-$SRUN ls $INPUT_FILE
+# Using ls return code because when running on the cluster, it has to be executed remotely and not on the login node
+$SRUN ls $INPUT_FILE &> /dev/null
 INPUT_EXISTS=$?
 if [ $INPUT_EXISTS -eq 0 ]; then
     echo "Input file already exists, please delete it first"
+    exit 1
 fi
 
 
@@ -65,8 +67,6 @@ run_seq() {
     echo -e "(sequential binary merge, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
     for j in $(seq 1 "$NRUNS")
     do
-
-        genFile
         $SRUN ./mergesort_seq -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
         $SRUN /bin/rm $OUTPUT_FILE
     done
@@ -75,7 +75,6 @@ run_seq() {
     echo -e "(sequential kway merge, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
     for j in $(seq 1 "$NRUNS")
     do
-        genFile
         $SRUN ./mergesort_seq -k -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
         $SRUN /bin/rm $OUTPUT_FILE
     done
@@ -92,7 +91,6 @@ run_parallel() {
         echo -e "(nthreads=$i, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
         for j in $(seq 1 "$NRUNS")
         do
-            genFile
             $SRUN ./mergesort_omp -t "$i" -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
             $SRUN /bin/rm $OUTPUT_FILE
             $SRUN ./mergesort_ff -t "$i" -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
@@ -122,7 +120,6 @@ run_mpi_strong() {
         fi
         SRUN_MPI=${MPI_RUN-"srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"}
         for j in $(seq 1 $NRUNS); do
-            genFile
             $SRUN_MPI ./mergesort_mpi -t "$NTHREADS" -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
             $SRUN /bin/rm -f $OUTPUT_FILE
         done
@@ -145,14 +142,13 @@ run_mpi_weak() {
                 NODELIST+=",$WORKER "
             fi
         done
+        genFile
         echo -e "(nnodes=$i, filesize=$($SRUN stat -c%s $INPUT_FILE | tr -d '\n'), nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
-
         if [[ -z "$SRUN" ]]; then
             MPI_RUN="mpirun -np $i"
         fi
         SRUN_MPI=${MPI_RUN-"srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"}
         for j in $(seq 1 $NRUNS); do
-            genFile
             $SRUN_MPI ./mergesort_mpi -t "$NTHREADS" -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
             $SRUN /bin/rm -f $OUTPUT_FILE
         done
@@ -168,9 +164,9 @@ cleanup() {
 }
 
 trap cleanup EXIT
+genFile
 run_seq
 run_parallel
 echo "#################################" | tee -a results/$LOG_FILE
 run_mpi_strong
-
 run_mpi_weak

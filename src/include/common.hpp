@@ -34,6 +34,15 @@
 
 template<typename Container>
 static ssize_t appendToFile(int fd, Container&& records, ssize_t size);
+
+// template<typename Container>
+// static ssize_t appendToFilePosix(int fd, Container&& records, ssize_t size);
+// template<typename Container>
+// static ssize_t readRecordsFromFilePosix(const std::string &filename, Container &records, size_t offset, size_t max_mem);
+// template<typename Container>
+// static ssize_t appendToFileMmap(int fd, Container&& records, ssize_t size);
+// template<typename Container>
+// static ssize_t readRecordsFromFileMmap(const std::string &filename, Container &records, size_t offset, size_t max_mem);
 static int openFile(const std::string& filename, bool append = false);
 
 
@@ -209,6 +218,98 @@ static int openFile(const std::string& filename, bool append) {
  */
 template<typename Container>
 static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
+    if (USE_WRITE)
+        return appendToFilePosix(fd, std::forward<Container>(records), size);
+    return appendToFileMmap(fd, std::forward<Container>(records), size);
+}
+
+template<typename Container>
+static ssize_t appendToFilePosix(int fd, Container&& records, ssize_t size) {
+    off_t current_size = lseek(fd, 0, SEEK_END);
+    if (current_size == -1) {
+        std::cerr << "lseek failed: " << strerror(errno) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    size_t batch_size = size;
+    if constexpr (!std::is_same_v<Container, std::priority_queue<Record, std::vector<Record>, RecordComparator>>) {
+        if (batch_size <= 0) {
+            batch_size = 0;
+            for (const auto& record : records)
+                batch_size += sizeof(record.key) + sizeof(record.len) + record.len;
+        }
+    } else {
+        if (batch_size < 0) {
+            std::cerr << "Invalid size" << std::endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // Prepare a big contiguous buffer in memory
+    std::vector<char> buffer;
+    buffer.reserve(batch_size);
+
+    // Serialize into buffer
+    if constexpr (std::is_same_v<Container, std::priority_queue<Record, std::vector<Record>, RecordComparator>>) {
+        while (!records.empty()) {
+            const Record& record = records.top();
+            buffer.insert(buffer.end(),
+                          reinterpret_cast<const char*>(&record.key),
+                          reinterpret_cast<const char*>(&record.key) + sizeof(record.key));
+            buffer.insert(buffer.end(),
+                          reinterpret_cast<const char*>(&record.len),
+                          reinterpret_cast<const char*>(&record.len) + sizeof(record.len));
+            buffer.insert(buffer.end(),
+                          record.rpayload.get(),
+                          record.rpayload.get() + record.len);
+            records.pop();
+        }
+    } else {
+        for (const auto& record : records) {
+            buffer.insert(buffer.end(),
+                          reinterpret_cast<const char*>(&record.key),
+                          reinterpret_cast<const char*>(&record.key) + sizeof(record.key));
+            buffer.insert(buffer.end(),
+                          reinterpret_cast<const char*>(&record.len),
+                          reinterpret_cast<const char*>(&record.len) + sizeof(record.len));
+            buffer.insert(buffer.end(),
+                          record.rpayload.get(),
+                          record.rpayload.get() + record.len);
+        }
+    }
+
+    // Seek to end and write in one go
+    if (lseek(fd, 0, SEEK_END) == -1) {
+        std::cerr << "lseek failed: " << strerror(errno) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    size_t remaining = buffer.size();
+    const char* ptr = buffer.data();
+    while (remaining > 0) {
+        ssize_t written = ::write(fd, ptr, remaining);
+        if (written == -1) {
+            if (errno == EINTR) continue;
+            std::cerr << "write failed: " << strerror(errno) << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        ptr += written;
+        remaining -= written;
+    }
+
+    // Optional: force flush to physical disk
+    if (fsync(fd) != 0) {
+        std::cerr << "fsync failed: " << strerror(errno) << std::endl;
+    }
+
+    if constexpr (!std::is_same_v<Container, std::priority_queue<Record, std::vector<Record>, RecordComparator>>)
+        records.clear();
+
+    return static_cast<ssize_t>(batch_size);
+}
+
+template<typename Container>
+static ssize_t appendToFileMmap(int fd, Container&& records, ssize_t size) {
     size_t page_size = sysconf(_SC_PAGE_SIZE);
 
     off_t current_size = lseek(fd, 0, SEEK_END);
@@ -281,15 +382,6 @@ static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
     return static_cast<ssize_t>(batch_size);
 }
 
-static ssize_t appendRecordToFile(const std::string& filename, Record record) {
-    int fd = openFile(filename, true);
-    ssize_t bytes_written = 0;
-    if ((bytes_written = write(fd, &record.key, sizeof(record.key))) < 0) exit(-1);
-    if ((bytes_written += write(fd, &record.len, sizeof(record.len))) < 0) exit(-1);
-    if ((bytes_written += write(fd, record.rpayload.get(), record.len)) < 0) exit(-1);
-    close(fd);
-    return bytes_written;
-}
 
 
 /**
@@ -302,76 +394,82 @@ static ssize_t appendRecordToFile(const std::string& filename, Record record) {
  * @param max_mem The maximum amount of memory to use for reading.
  * @return The number of bytes read from the file.
  */
-// template<typename Container>
-// static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
-//     // std::cout << "[ Warning ] - readRecordsFromFile needs review: it cannot read max_mem, it returns before" << std::endl;
-//     int fd = openFile(filename);
-//     if (lseek(fd, static_cast<off_t>(offset), SEEK_SET) < 0) {
-//         std::cerr << "lseek failed: " << strerror(errno) << std::endl;
-//         close(fd);
-//         exit(EXIT_FAILURE);
-//     }
+ template<typename Container>
+ static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
+     if (USE_WRITE)
+        return readRecordsFromFilePosix(filename, records, offset, max_mem);
+    return readRecordsFromFileMmap(filename, records, offset, max_mem);
+ }
+template<typename Container>
+static size_t readRecordsFromFilePosix(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
+    // std::cout << "[ Warning ] - readRecordsFromFile needs review: it cannot read max_mem, it returns before" << std::endl;
+    int fd = openFile(filename);
+    if (lseek(fd, static_cast<off_t>(offset), SEEK_SET) < 0) {
+        std::cerr << "lseek failed: " << strerror(errno) << std::endl;
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
 
-//     std::vector<char> read_buf(max_mem);
-//     size_t bytes_in_buffer = 0;
-//     size_t buffer_offset = 0;
-//     size_t total_bytes_read = 0;
+    std::vector<char> read_buf(max_mem);
+    size_t bytes_in_buffer = 0;
+    size_t buffer_offset = 0;
+    size_t total_bytes_read = 0;
 
-//     while (total_bytes_read < max_mem) {
-//         if (buffer_offset < bytes_in_buffer) {
-//             size_t remaining = bytes_in_buffer - buffer_offset;
-//             memmove(read_buf.data(), read_buf.data() + buffer_offset, remaining);
-//             bytes_in_buffer = remaining;
-//         } else
-//             bytes_in_buffer = 0;
+    while (total_bytes_read < max_mem) {
+        if (buffer_offset < bytes_in_buffer) {
+            size_t remaining = bytes_in_buffer - buffer_offset;
+            memmove(read_buf.data(), read_buf.data() + buffer_offset, remaining);
+            bytes_in_buffer = remaining;
+        } else
+            bytes_in_buffer = 0;
 
-//         ssize_t read_bytes = read(fd, read_buf.data() + bytes_in_buffer, read_buf.size() - bytes_in_buffer);
-//         if (read_bytes < 0) {
-//             std::cerr << "Read error: " << strerror(errno) << std::endl;
-//             close(fd);
-//             exit(EXIT_FAILURE);
-//         } else if (read_bytes == 0) {
-//             break; // EOF
-//         }
+        ssize_t read_bytes = read(fd, read_buf.data() + bytes_in_buffer, read_buf.size() - bytes_in_buffer);
+        if (read_bytes < 0) {
+            std::cerr << "Read error: " << strerror(errno) << std::endl;
+            close(fd);
+            exit(EXIT_FAILURE);
+        } else if (read_bytes == 0) {
+            break; // EOF
+        }
 
-//         bytes_in_buffer += static_cast<size_t>(read_bytes);
+        bytes_in_buffer += static_cast<size_t>(read_bytes);
 
-//         while (buffer_offset + sizeof(uint64_t) + sizeof(uint32_t) <= bytes_in_buffer) {
-//             const char* base = read_buf.data() + buffer_offset;
-//             uint64_t key = *reinterpret_cast<const uint64_t*>(base);
-//             uint32_t len = *reinterpret_cast<const uint32_t*>(base + sizeof(uint64_t));
+        while (buffer_offset + sizeof(uint64_t) + sizeof(uint32_t) <= bytes_in_buffer) {
+            const char* base = read_buf.data() + buffer_offset;
+            uint64_t key = *reinterpret_cast<const uint64_t*>(base);
+            uint32_t len = *reinterpret_cast<const uint32_t*>(base + sizeof(uint64_t));
 
-//             size_t record_size = sizeof(uint64_t) + sizeof(uint32_t) + static_cast<size_t>(len);
+            size_t record_size = sizeof(uint64_t) + sizeof(uint32_t) + static_cast<size_t>(len);
 
-//             if (buffer_offset + record_size > bytes_in_buffer || total_bytes_read + record_size > max_mem)
-//                 goto finish;
+            if (buffer_offset + record_size > bytes_in_buffer || total_bytes_read + record_size > max_mem)
+                goto finish;
 
-//             Record rec;
-//             rec.key = key;
-//             rec.len = len;
-//             rec.rpayload = std::make_unique<char[]>(len);
-//             std::memcpy(rec.rpayload.get(), base + sizeof(uint64_t) + sizeof(uint32_t), len);
+            Record rec;
+            rec.key = key;
+            rec.len = len;
+            rec.rpayload = std::make_unique<char[]>(len);
+            std::memcpy(rec.rpayload.get(), base + sizeof(uint64_t) + sizeof(uint32_t), len);
 
-//             if constexpr (
-//                 std::is_same_v<Container, std::vector<Record>> ||
-//                 std::is_same_v<Container, std::deque<Record>>) {
-//                 records.push_back(std::move(rec));
-//             } else {
-//                 records.push(std::move(rec));
-//             }
+            if constexpr (
+                std::is_same_v<Container, std::vector<Record>> ||
+                std::is_same_v<Container, std::deque<Record>>) {
+                records.push_back(std::move(rec));
+            } else {
+                records.push(std::move(rec));
+            }
 
-//             buffer_offset += record_size;
-//             total_bytes_read += record_size;
-//         }
-//     }
+            buffer_offset += record_size;
+            total_bytes_read += record_size;
+        }
+    }
 
-// finish:
-//     close(fd);
-//     return total_bytes_read;
-// }
+finish:
+    close(fd);
+    return total_bytes_read;
+}
 
 template<typename Container>
-static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
+static size_t readRecordsFromFileMmap(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
     int fd = openFile(filename);
     if (fd < 0) {
         std::cerr << "openFile failed for " << filename << ": " << strerror(errno) << std::endl;
