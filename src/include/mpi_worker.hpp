@@ -31,6 +31,7 @@ static void worker(std::string tmp_location) {
     std::string run_prefix = tmp_path.string() + "/run#";
     std::string merge_prefix = tmp_path.string() + "/merge#";
     std::string output_file = tmp_path.string() + "/output.dat";
+    std::vector<std::string> sequences;
 
     while (true) {
         MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
@@ -64,6 +65,7 @@ static void worker(std::string tmp_location) {
         // as the master will only send MAX_MEMORY/2 bytes at a time
         if (accumulated_size >= MAX_MEMORY) {
             std::string file = run_prefix + generateUUID();
+            sequences.push_back(file);
             int fd = openFile(file);
             std::sort(records.begin(), records.end(), RecordComparator{});
             appendToFile(fd, std::move(records), accumulated_size); // This empties the heap
@@ -74,13 +76,14 @@ static void worker(std::string tmp_location) {
 
     if (!records.empty()) {
         std::string file = run_prefix + generateUUID();
+        sequences.push_back(file);
         int fd = openFile(file);
         std::sort(records.begin(), records.end(), RecordComparator{});
         appendToFile(fd, std::move(records), accumulated_size);
         close(fd);
         accumulated_size = 0;
     }
-    ompMerge(run_prefix, merge_prefix, output_file);
+    ompMerge(sequences, merge_prefix, output_file);
     fd = openFile(output_file);
 
     // The receiver can only read up to MAX_MEMORY/2 bytes at a time

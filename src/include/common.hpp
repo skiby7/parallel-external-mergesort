@@ -114,7 +114,6 @@ static void generateFile(std::string filename) {
 static inline bool checkSorted(std::vector<Record>& array) {
     for (size_t i = 1; i < array.size(); i++)
         if (array[i].key < array[i-1].key) {
-            // std::cout << "Array is not sorted at index " << i << ": " << array[i] << " < " << array[i0] << std::endl;
             return false;
         }
     return true;
@@ -143,7 +142,7 @@ static bool checkSortedFile(const std::string& filename) {
         }
         prev_key = key;
 
-        // Read length
+        /* Read length */
         read_size = read(fd, &len, sizeof(len));
         if (read_size < 0) {
             std::cerr << "Error reading length: " << strerror(errno) << std::endl;
@@ -151,7 +150,7 @@ static bool checkSortedFile(const std::string& filename) {
             exit(-1);
         }
 
-        // Skip payload
+        /* Skip payload */
         if (lseek(fd, len, SEEK_CUR) == -1) {
             std::cerr << "Error seeking past payload: " << strerror(errno) << std::endl;
             close(fd);
@@ -162,7 +161,6 @@ static bool checkSortedFile(const std::string& filename) {
     close(fd);
     return true;
 }
-
 
 
 static size_t getFileSize(const std::string& filename) {
@@ -199,17 +197,129 @@ static int openFile(const std::string& filename, bool append) {
 }
 
 
+
+
+
+/**
+ * Read records from a file into a container that can be a vector, a deque or a priority queue.
+ * It reads a chunk of data from the file and parses it into records to minimize the number of system calls.
+ *
+ * @param filename The name of the file to read from.
+ * @param records The container to store the records in.
+ * @param offset The offset in the file to start reading from.
+ * @param max_mem The maximum amount of memory to use for reading.
+ * @return The number of bytes read from the file.
+ */
+template<typename Container>
+static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
+    int fd = openFile(filename);
+    if (fd < 0) {
+        std::cerr << "openFile failed for " << filename << ": " << strerror(errno) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    /* Get file size */
+    struct stat st;
+    if (fstat(fd, &st) < 0) {
+        std::cerr << "fstat failed: " << strerror(errno) << std::endl;
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+    size_t file_size = static_cast<size_t>(st.st_size);
+    if (offset >= file_size) {
+        close(fd);
+        return 0; // nothing to read
+    }
+
+    /* === Page-align the mmap region === */
+    const long page_size = sysconf(_SC_PAGESIZE);
+
+    /**
+     * Let's say page_size is 4096 bytes.
+     * page_mask is 4095 -> 12 bits set to 1.
+     * Being an unsigned long its likely 64 bits -> ~page_mask is 1...100000000000
+     * Computing offset & ~page_mask clears off the lower 12 bits of the offset, giving us the highest multiple of page_size
+     * lower than the actual offset.
+     * So, to know the offset within the page, we simply compute offset - map_offset.
+     *
+     * Offset: 12345
+     * Map Offset: 12288
+     * Page Offset: 57
+     * File:   |------ Page0 ------|------ Page1 ------|------ Page2 ------|------ Page3 ------|
+     * Offset: 0                 4096                8192               12288   ^           16384
+     *                                                                          |
+     *                                                                  12288 + 57 = 12345
+     */
+    off_t map_offset = offset & ~(page_size - 1);  // align down
+    size_t start_in_map = offset - map_offset;  // where parsing starts within map
+    size_t max_map_len = std::min(max_mem + start_in_map, file_size - map_offset);
+    if (max_map_len == 0) {
+        close(fd);
+        return 0;
+    }
+
+    void* mapped = mmap(nullptr, max_map_len, PROT_READ, MAP_PRIVATE, fd, map_offset);
+    if (mapped == MAP_FAILED) {
+        std::cerr << "mmap failed: " << strerror(errno) << std::endl;
+        close(fd);
+        exit(EXIT_FAILURE);
+    }
+
+    const char* base = static_cast<const char*>(mapped);
+    size_t pos = start_in_map;
+    size_t total_bytes_parsed = 0;
+
+    while (true) {
+        /* need at least key + len */
+        if (pos + sizeof(uint64_t) + sizeof(uint32_t) > max_map_len) break;
+
+        uint64_t key;
+        uint32_t len;
+
+        std::memcpy(&key, base + pos, sizeof(key));
+        std::memcpy(&len, base + pos + sizeof(key), sizeof(len));
+
+        size_t record_size = sizeof(uint64_t) + sizeof(uint32_t) + static_cast<size_t>(len);
+
+        /* If record would cross mapped region or exceed allowed max_mem, stop */
+        if (
+            pos + record_size > max_map_len
+            || total_bytes_parsed + record_size > max_mem
+        ) break;
+
+        Record rec;
+        rec.key = key;
+        rec.len = len;
+        rec.rpayload = std::make_unique<char[]>(len);
+        std::memcpy(rec.rpayload.get(), base + pos + sizeof(uint64_t) + sizeof(uint32_t), len);
+
+        if constexpr (
+            std::is_same_v<Container, std::vector<Record>> ||
+            std::is_same_v<Container, std::deque<Record>>) {
+            records.push_back(std::move(rec));
+        } else {
+            records.push(std::move(rec)); // for e.g. priority_queue
+        }
+
+        pos += record_size;
+        total_bytes_parsed += record_size;
+    }
+
+    munmap(mapped, max_map_len);
+    close(fd);
+    return total_bytes_parsed;
+}
+
 /**
  * This function appends a list of records to a file using mmap,
- * returning the bytes written. Also, it clears the records deque before returning.
- *
+ * returning the bytes written. Also, it clears the records Container before returning.
+ * It expects the file to be already open.
  * @param fd The file descriptor of the file to append to.
  * @param records The records to append.
  * @return The number of bytes written.
  */
 template<typename Container>
 static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
-    size_t page_size = sysconf(_SC_PAGE_SIZE);
 
     off_t current_size = lseek(fd, 0, SEEK_END);
     if (current_size == -1) {
@@ -233,6 +343,8 @@ static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
         std::cerr << "ftruncate failed: " << strerror(errno) << std::endl;
         exit(EXIT_FAILURE);
     }
+
+    size_t page_size = sysconf(_SC_PAGE_SIZE);
 
     off_t aligned_offset = current_size & ~(page_size - 1);
     size_t delta = current_size - aligned_offset;
@@ -270,178 +382,11 @@ static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
         std::cerr << "msync failed: " << strerror(errno) << std::endl;
 
 
-    if (munmap(map_ptr, map_len) != 0) {
-        std::cerr << "munmap failed: " << strerror(errno) << std::endl;
-        exit(EXIT_FAILURE);
-    }
+    munmap(map_ptr, map_len);
 
     if constexpr (!std::is_same_v<Container, std::priority_queue<Record, std::vector<Record>, RecordComparator>>)
         records.clear();
 
     return static_cast<ssize_t>(batch_size);
 }
-
-
-/**
- * Read records from a file into a container that can be a vector, a deque or a priority queue.
- * It reads a chunk of data from the file and parses it into records to minimize the number of system calls.
- *
- * @param filename The name of the file to read from.
- * @param records The container to store the records in.
- * @param offset The offset in the file to start reading from.
- * @param max_mem The maximum amount of memory to use for reading.
- * @return The number of bytes read from the file.
- */
-template<typename Container>
-static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
-    int fd = openFile(filename);
-    if (fd < 0) {
-        std::cerr << "openFile failed for " << filename << ": " << strerror(errno) << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
-    // Get file size
-    struct stat st;
-    if (fstat(fd, &st) < 0) {
-        std::cerr << "fstat failed: " << strerror(errno) << std::endl;
-        close(fd);
-        exit(EXIT_FAILURE);
-    }
-    size_t file_size = static_cast<size_t>(st.st_size);
-    if (offset >= file_size) {
-        close(fd);
-        return 0; // nothing to read
-    }
-
-    // Page-align the mmap region
-    const long page_size = sysconf(_SC_PAGESIZE);
-    size_t page_mask = static_cast<size_t>(page_size - 1);
-    size_t map_offset = offset & ~page_mask;                    // align down
-    size_t start_in_map = offset - map_offset;                  // where parsing starts within map
-    size_t max_map_len = std::min(max_mem + start_in_map, file_size - map_offset);
-    if (max_map_len == 0) {
-        close(fd);
-        return 0;
-    }
-
-    void* mapped = mmap(nullptr, max_map_len, PROT_READ, MAP_PRIVATE, fd, static_cast<off_t>(map_offset));
-    if (mapped == MAP_FAILED) {
-        std::cerr << "mmap failed: " << strerror(errno) << std::endl;
-        close(fd);
-        exit(EXIT_FAILURE);
-    }
-
-    const char* base = static_cast<const char*>(mapped);
-    size_t pos = start_in_map;
-    size_t total_bytes_parsed = 0;
-
-    // Parse loop
-    while (true) {
-        // need at least key + len
-        if (pos + sizeof(uint64_t) + sizeof(uint32_t) > max_map_len) break;
-
-        uint64_t key;
-        uint32_t len;
-
-        // use memcpy to avoid unaligned access UB
-        std::memcpy(&key, base + pos, sizeof(key));
-        std::memcpy(&len, base + pos + sizeof(key), sizeof(len));
-
-        size_t record_size = sizeof(uint64_t) + sizeof(uint32_t) + static_cast<size_t>(len);
-
-        // If record would cross mapped region or exceed allowed max_mem, stop
-        if (pos + record_size > max_map_len) break;
-        if (total_bytes_parsed + record_size > max_mem) break;
-
-        // Create Record and copy payload
-        Record rec;
-        rec.key = key;
-        rec.len = len;
-        rec.rpayload = std::make_unique<char[]>(len);
-        std::memcpy(rec.rpayload.get(), base + pos + sizeof(uint64_t) + sizeof(uint32_t), len);
-
-        if constexpr (
-            std::is_same_v<Container, std::vector<Record>> ||
-            std::is_same_v<Container, std::deque<Record>>) {
-            records.push_back(std::move(rec));
-        } else {
-            records.push(std::move(rec)); // for e.g. priority_queue
-        }
-
-        pos += record_size;
-        total_bytes_parsed += record_size;
-    }
-
-    // unmap and close
-    if (munmap(mapped, max_map_len) < 0) {
-        std::cerr << "munmap failed: " << strerror(errno) << std::endl;
-        // non-fatal: continue
-    }
-    close(fd);
-    return total_bytes_parsed;
-}
-
-/**
- * Find files in a directory with a given prefix.
- *
- * @param prefix_path The path to the directory and the prefix of the files to find.
- * @return A vector of strings containing the paths of the matching files.
- */
-static std::vector<std::string> findFiles(const std::string& prefix_path) {
-    std::vector<std::string> matching_files;
-    std::string directory;
-    std::string filename_prefix;
-    size_t last_slash = prefix_path.find_last_of('/');
-    if (last_slash != std::string::npos) {
-        directory = prefix_path.substr(0, last_slash);
-        filename_prefix = prefix_path.substr(last_slash + 1);
-    } else {
-        directory = ".";
-        filename_prefix = prefix_path;
-    }
-
-    if (directory.empty()) {
-        directory = ".";
-    }
-    struct stat dir_stat;
-    if (stat(directory.c_str(), &dir_stat) != 0) {
-        std::cerr << "Cannot access directory: " << directory << std::endl;
-        std::cerr << "errno: " << errno << " (" << strerror(errno) << ")" << std::endl;
-        return matching_files;
-    }
-
-    if (!S_ISDIR(dir_stat.st_mode)) {
-        std::cerr << "Path is not a directory: " << directory << std::endl;
-        return matching_files;
-    }
-
-    DIR* dir = opendir(directory.c_str());
-    if (dir == nullptr) {
-        std::cerr << "Error opening directory: " << directory << std::endl;
-        std::cerr << "errno: " << errno << " (" << strerror(errno) << ")" << std::endl;
-        return matching_files;
-    }
-
-    struct dirent* entry;
-    while ((entry = readdir(dir)) != nullptr) {
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-            continue;
-        }
-        std::string full_entry_path = directory + "/" + entry->d_name;
-        struct stat file_stat;
-        if (stat(full_entry_path.c_str(), &file_stat) == 0) {
-            if (S_ISREG(file_stat.st_mode)) {  // Regular file
-                std::string filename = entry->d_name;
-                if (filename.length() >= filename_prefix.length() &&
-                    filename.substr(0, filename_prefix.length()) == filename_prefix) {
-                    matching_files.push_back(full_entry_path);
-                }
-            }
-        }
-    }
-    closedir(dir);
-    return matching_files;
-}
-
-
 #endif // !_COMMON_HPP

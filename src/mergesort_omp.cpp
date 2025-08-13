@@ -13,12 +13,12 @@
 #include "include/omp_sort.hpp"
 #include "include/sorting.hpp"
 
-void computeChunksAndProcess(const std::string& filename, size_t num_threads, const std::string& run_prefix) {
+std::vector<std::string> computeChunksAndProcess(const std::string& filename, const std::string& run_prefix) {
+    size_t num_threads = omp_get_max_threads();
     size_t file_size = getFileSize(filename);
-    // size_t chunk_size = file_size / (num_threads*num_threads); // Create more tasks to make the cpu usage higher and feed all the threads
-    size_t chunk_size = std::max(file_size / (num_threads * 3), static_cast<size_t>(1024 * 1024));
-    // size_t chunk_size = file_size / num_threads;
-
+    size_t nworkers = num_threads - 1;
+    size_t max_mem_per_chunk = MAX_MEMORY / nworkers;
+    size_t chunk_size = std::min(file_size / 100, 3 * max_mem_per_chunk); // 1% of the file or the memory per worker to keep them busy
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) {
         std::cerr << "Error opening file: " << strerror(errno) << std::endl;
@@ -31,6 +31,8 @@ void computeChunksAndProcess(const std::string& filename, size_t num_threads, co
 
     size_t logical_start = 0;
     size_t logical_end = 0;
+
+    std::vector<std::vector<std::string>> sequences(num_threads);
 
     #pragma omp parallel
     {
@@ -87,7 +89,13 @@ void computeChunksAndProcess(const std::string& filename, size_t num_threads, co
                         std::string uuid = generateUUID();
                         #pragma omp task firstprivate(logical_start, size, uuid)
                         {
-                            genSortedRunsWithSort(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
+                            std::vector<std::string> seq = genSortedRunsWithSort(filename, logical_start, size, MAX_MEMORY / nworkers, run_prefix + uuid);
+                            sequences[omp_get_thread_num()]
+                                .insert(
+                                    sequences[omp_get_thread_num()].end(),
+                                    std::make_move_iterator(seq.begin()),
+                                    std::make_move_iterator(seq.end())
+                                );
                         }
                         logical_start = logical_end;
                     }
@@ -103,7 +111,13 @@ void computeChunksAndProcess(const std::string& filename, size_t num_threads, co
                 std::string uuid = generateUUID();
                 #pragma omp task firstprivate(logical_start, size, uuid)
                 {
-                    genSortedRunsWithSort(filename, logical_start, size, MAX_MEMORY / num_threads, run_prefix + uuid);
+                    std::vector<std::string> seq = genSortedRunsWithSort(filename, logical_start, size, MAX_MEMORY / nworkers, run_prefix + uuid);
+                    sequences[omp_get_thread_num()]
+                        .insert(
+                            sequences[omp_get_thread_num()].end(),
+                            std::make_move_iterator(seq.begin()),
+                            std::make_move_iterator(seq.end())
+                        );
                 }
             }
 
@@ -111,6 +125,18 @@ void computeChunksAndProcess(const std::string& filename, size_t num_threads, co
             close(fd);
         }
     }
+    std::vector<std::string> all_sequences;
+
+    size_t total_size = 0;
+    for (const auto& v : sequences) total_size += v.size();
+    all_sequences.reserve(total_size);
+
+    for (auto& inner_vec : sequences) {
+        all_sequences.insert(all_sequences.end(),
+            std::make_move_iterator(inner_vec.begin()),
+            std::make_move_iterator(inner_vec.end()));
+    }
+    return all_sequences;
 }
 
 
@@ -126,8 +152,8 @@ int main(int argc, char *argv[]) {
     std::string merge_prefix = p.parent_path().string() + "/merge#";
     std::string output_file = p.parent_path().string() + "/output.dat";
     TIMERSTART(mergesort_omp)
-    computeChunksAndProcess(filename, omp_get_max_threads(), run_prefix);
-    ompMerge(run_prefix, merge_prefix, output_file);
+    std::vector<std::string> sequences = computeChunksAndProcess(filename, run_prefix);
+    ompMerge(sequences, merge_prefix, output_file);
     TIMERSTOP(mergesort_omp)
 
     return 0;

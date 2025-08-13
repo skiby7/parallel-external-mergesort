@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <iostream>
 #include <mpi.h>
+#include <string>
 #include <unistd.h>
 #include <vector>
 
@@ -90,33 +91,36 @@ static void master(const std::string& filename, int world_size) {
     }
 
     int n_threads = num_workers;
+    std::vector<std::string> sequences(world_size - 1);
     // Here I spawn one thread per worker, or the max I can spawn
     // and each thread will receive a chunk of data from the master node
     #pragma omp parallel num_threads(n_threads)
     {
+        int src = omp_get_thread_num() + 1;
+        std::string fname = run_prefix + std::to_string(src);
+        #pragma omp critical
+        {
+            sequences.push_back(fname);
+        }
+        int fd = openFile(fname, true);
         while (true) {
             MPI_Status status;
             int result_size;
             // Each thread waits for a worker
-            int src = omp_get_thread_num() + 1;
 
             MPI_Recv(&result_size, 1, MPI_INT, src, 1, MPI_COMM_WORLD, &status);
 
 
             if (result_size == 0) {
                 workers_done.fetch_add(1);
+                close(fd);
                 break;
             }
 
             std::vector<char> result(result_size);
 
             MPI_Recv(result.data(), result_size, MPI_CHAR, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-            // File I/O can remain parallel
-            std::string fname = run_prefix + std::to_string(src);
-            int fd = openFile(fname, true);
             write(fd, result.data(), result_size);
-            close(fd);
         }
     }
 
@@ -124,7 +128,7 @@ static void master(const std::string& filename, int world_size) {
      * Only the master node access to the disk and merge the sorted chunks
      */
 
-        ompMerge(run_prefix, merge_prefix, output_file);
+        ompMerge(sequences, merge_prefix, output_file);
     }
 
 #endif // _MPI_MASTER_HPP
