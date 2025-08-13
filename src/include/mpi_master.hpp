@@ -91,7 +91,7 @@ static void master(const std::string& filename, int world_size) {
     }
 
     int n_threads = num_workers;
-    std::vector<std::string> sequences(world_size - 1);
+    std::vector<std::string> sequences;
     // Here I spawn one thread per worker, or the max I can spawn
     // and each thread will receive a chunk of data from the master node
     #pragma omp parallel num_threads(n_threads)
@@ -128,7 +128,7 @@ static void master(const std::string& filename, int world_size) {
      * Only the master node access to the disk and merge the sorted chunks
      */
 
-        ompMerge(sequences, merge_prefix, output_file);
+     ompMerge(sequences, merge_prefix, output_file);
     }
 
 #endif // _MPI_MASTER_HPP

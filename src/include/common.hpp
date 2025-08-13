@@ -9,7 +9,6 @@
 #include "config.hpp"
 #include "record.hpp"
 #include <cerrno>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -163,14 +162,40 @@ static bool checkSortedFile(const std::string& filename) {
 }
 
 
-static size_t getFileSize(const std::string& filename) {
+static size_t getFileSize(const std::string filename) {
     struct stat stat_buf;
     if (stat(filename.c_str(), &stat_buf) != 0) {
-        std::cerr << "Error getting file stats: " << filename << std::endl;
+        std::cerr << "Error getting file stats: " << filename << strerror(errno) << std::endl;
         return 0;
     }
     return stat_buf.st_size;
 }
+
+// class Reporter
+//   {
+//     public:
+//       Reporter(std::string Caller, std::string File, int Line)
+//         : caller_(Caller)
+//         , file_(File)
+//         , line_(Line)
+//       {}
+
+//       int operator()(std::string filename)
+//       {
+//         std::cout
+//           << "Reporter: FunctionName() is being called by "
+//           << caller_ << "() in " << file_ << ":" << line_ << std::endl;
+//         // can use the original name here, as it is still defined
+//         return getFileSize(filename);
+//       }
+//     private:
+//       std::string   caller_;
+//       std::string   file_;
+//       int           line_;
+
+//   };
+// #  undef getFileSize
+// #  define getFileSize Reporter(__FUNCTION__,__FILE__,__LINE__)
 
 static bool deleteFile(const char* filename) {
     if (unlink(filename) == 0) {

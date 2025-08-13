@@ -2,7 +2,6 @@
 #include <vector>
 #include "include/cmdline.hpp"
 #include "include/config.hpp"
-#include "include/hpc_helpers.hpp"
 #include "include/ff_sort.hpp"
 #include <ff/ff.hpp>
 #include <filesystem>
@@ -37,8 +36,8 @@ int main(int argc, char *argv[]) {
     farm.add_workers(W);
     farm.wrap_around();
     farm.cleanup_workers();
-    // This improves the performance of the farm making it almost on par with OMP
-    if (FF_NO_MAPPING) // Def vaule is true
+
+    if (FF_NO_MAPPING) // Def value is true
         farm.no_mapping();
 
     timer_start();
@@ -47,6 +46,5 @@ int main(int argc, char *argv[]) {
     }
     timer_stop(FF_NO_MAPPING ? "mergesort_ff_no_mapping" : "mergesort_ff");
 
-    // assert(checkSortedFile(p.parent_path().string() + "/output.dat"));
     return 0;
 }

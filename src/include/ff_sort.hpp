@@ -63,20 +63,23 @@ struct Master : ff::ff_monode_t<work_t> {
 
     void send_out_sort_tasks() {
         size_t file_size = getFileSize(filename);
-        // size_t chunk_size = file_size / (nworkers * nworkers);
-
-        size_t chunk_size = std::max(file_size / (nworkers * 3), static_cast<size_t>(1024 * 1024));
+        size_t max_mem_per_worker = MAX_MEMORY / NTHREADS;
+        size_t chunk_size = std::min(file_size / 100, 3 * max_mem_per_worker); // 1% of the file or the memory per worker to keep them busy
         int fd = openFile(filename);
 
-        std::vector<char> buffer(MAX_MEMORY / nworkers);
-        size_t buffer_offset = 0, file_offset = 0, logical_start = 0, logical_end = 0;
+        /**
+         * While the master thread is skipping through the file,
+         * the memory usage is a little higher than the allowed memory.
+         * But it is the same in the omp implementation, so the comparison is fair.
+        */
+        std::vector<char> buffer(max_mem_per_worker);
+        size_t buffer_offset = 0, file_offset = 0, start_offset = 0, end_offset = 0;
 
         size_t bytes_in_buffer = 0;
         size_t worker_id = 0;
         submitted_sort_tasks.resize(nworkers);
 
         while (true) {
-            // Shift leftover bytes
             if (buffer_offset < bytes_in_buffer) {
                 memmove(buffer.data(), buffer.data() + buffer_offset, bytes_in_buffer - buffer_offset);
                 bytes_in_buffer -= buffer_offset;
@@ -85,6 +88,7 @@ struct Master : ff::ff_monode_t<work_t> {
             }
             buffer_offset = 0;
 
+            /* One single syscall is faster than reading key+len and lseek to the next key */
             ssize_t bytes_read = read(fd, buffer.data() + bytes_in_buffer, buffer.size() - bytes_in_buffer);
             if (bytes_read < 0) {
                 std::cerr << "Read error: " << strerror(errno) << std::endl;
@@ -95,7 +99,6 @@ struct Master : ff::ff_monode_t<work_t> {
             }
             bytes_in_buffer += bytes_read;
 
-            // Parse complete records
             while (buffer_offset + sizeof(uint64_t) + sizeof(uint32_t) <= bytes_in_buffer) {
                 size_t local_offset = buffer_offset;
 
@@ -110,35 +113,33 @@ struct Master : ff::ff_monode_t<work_t> {
                 }
 
                 buffer_offset += len;
+                end_offset = file_offset + buffer_offset;
 
-                logical_end = file_offset + buffer_offset;
-
-                if (logical_end - logical_start >= chunk_size) {
-                    size_t size = logical_end - logical_start;
+                if (end_offset - start_offset >= chunk_size) {
+                    size_t size = end_offset - start_offset;
                     ff_send_out_to(new work_t{new sort_task_t{
                         filename,
-                        logical_start,
+                        start_offset,
                         size,
-                        MAX_MEMORY / nworkers,
+                        max_mem_per_worker,
                         worker_id
                     }, nullptr}, worker_id);
                     submitted_sort_tasks[worker_id]++;
                     worker_id = (worker_id + 1) % nworkers;
-                    logical_start = logical_end;
+                    start_offset = end_offset;
                 }
             }
 
             file_offset += buffer_offset;
         }
 
-        // Emit remaining bytes
-        if (logical_end > logical_start) {
-            size_t size = logical_end - logical_start;
+        if (end_offset > start_offset) {
+            size_t size = end_offset - start_offset;
             ff_send_out_to(new work_t{new sort_task_t{
                 filename,
-                logical_start,
+                start_offset,
                 size,
-                MAX_MEMORY / nworkers,
+                max_mem_per_worker,
                 worker_id
             }, nullptr}, worker_id);
             submitted_sort_tasks[worker_id]++;
@@ -150,9 +151,6 @@ struct Master : ff::ff_monode_t<work_t> {
     work_t* svc(work_t* task) {
         if (!task) {
             run_files.resize(nworkers);
-            // auto now = std::chrono::system_clock::now();
-            // auto epoch = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch());
-            // std::cout << epoch.count() << '\n';
             send_out_sort_tasks();
             return GO_ON;
         } else if (task->sort_task) {
@@ -162,7 +160,7 @@ struct Master : ff::ff_monode_t<work_t> {
                std::make_move_iterator(task->sort_task->run_files.end()));
             if (--submitted_sort_tasks[task->sort_task->w_id] == 0) {
                 if (run_files[task->sort_task->w_id].size() == 1) {
-                    // If it produced a single run file, it can be passed to the final merge
+                    /* If it produced a single run file, it can be passed to the final merge */
                     merge_files.push_back(run_files[task->sort_task->w_id][0]);
                 } else {
                     std::string filename = merge_prefix + generateUUID();

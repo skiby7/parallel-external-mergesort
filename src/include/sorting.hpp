@@ -115,7 +115,7 @@ struct BufferState {
 
     BufferState(std::string name, size_t index)
         : filename(std::move(name)), file_index(index) {
-        total_bytes = getFileSize(filename);
+            total_bytes = getFileSize(filename);
     }
 
     bool hasMoreData() const {

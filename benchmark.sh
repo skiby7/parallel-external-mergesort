@@ -29,7 +29,6 @@ if [ $INPUT_EXISTS -eq 0 ]; then
 fi
 
 
-$SRUN make gen_file
 genFile() {
     echo "Generating input file with at most $PAYLOAD_SIZE bytes per item and $ITEMS_COUNT items..."
     $SRUN rm -f $INPUT_FILE
@@ -60,6 +59,7 @@ echo "" > results/$LOG_FILE
 
 $SRUN make clean
 $SRUN make -j
+$SRUN make gen_file
 
 
 run_seq() {
@@ -91,7 +91,7 @@ run_parallel() {
         echo -e "(nthreads=$i, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
         for j in $(seq 1 "$NRUNS")
         do
-            $SRUN ./mergesort_omp -t "$i" -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
+            $SRUN ./mergesort_omp -t "$(($i - ${REDUCE_GAP:-0}))" -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
             $SRUN /bin/rm $OUTPUT_FILE
             $SRUN ./mergesort_ff -t "$i" -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
             $SRUN /bin/rm $OUTPUT_FILE
