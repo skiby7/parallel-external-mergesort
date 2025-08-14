@@ -21,8 +21,13 @@ typedef struct _Record {
     }
 
     _Record(const _Record& other)
-        : key(other.key), len(other.len), rpayload(std::make_unique<char[]>(other.len)) {
-        std::memcpy(rpayload.get(), other.rpayload.get(), len);
+        : key(other.key), len(other.len) {
+        if (other.len > 0 && other.rpayload) {
+            rpayload = std::make_unique<char[]>(other.len);
+            std::memcpy(rpayload.get(), other.rpayload.get(), len);
+        } else {
+            rpayload = nullptr;
+        }
     }
 
     _Record(_Record&& other) noexcept
@@ -35,8 +40,13 @@ typedef struct _Record {
         if (this != &other) {
             key = other.key;
             len = other.len;
-            rpayload = std::make_unique<char[]>(len);
-            std::memcpy(rpayload.get(), other.rpayload.get(), len);
+
+            if (other.len > 0 && other.rpayload) {
+                rpayload = std::make_unique<char[]>(len);
+                std::memcpy(rpayload.get(), other.rpayload.get(), len);
+            } else {
+                rpayload = nullptr;
+            }
         }
         return *this;
     }
@@ -45,14 +55,20 @@ typedef struct _Record {
         if (this != &other) {
             key = other.key;
             len = other.len;
-            rpayload = std::move(other.rpayload);
-            other.key = 0;
-            other.len = 0;
+
+            if (other.len > 0 && other.rpayload) {
+                rpayload = std::make_unique<char[]>(len);
+                std::memcpy(rpayload.get(), other.rpayload.get(), len);
+            } else {
+                rpayload = nullptr;
+            }
         }
         return *this;
     }
 
     ~_Record() = default;
+
+    size_t size() const { return sizeof(key) + sizeof(len) + len; }
 
     bool operator < (const _Record &a) const { return key < a.key; }
     bool operator <= (const _Record &a) const { return key <= a.key; }

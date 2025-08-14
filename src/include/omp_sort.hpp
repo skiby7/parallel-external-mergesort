@@ -130,18 +130,7 @@ static std::vector<std::string> chunkFile(const std::string& filename, const std
                        [](const std::string& f) { return f.empty(); }),
         all_sequences.end()
     );
-    // std::cout << "###" << std::endl;
-    //
-    // for (auto seq: all_sequences) {
-    //     std::cout << seq << std::endl;
-    // }
-    // std::cout << "###" << std::endl;
-    // all_sequences.erase(std::remove(all_sequences.begin(), all_sequences.end(), ""), all_sequences.end());
-    // std::cout << "###" << std::endl;
-    // for (auto seq: all_sequences) {
-    //     std::cout << seq << std::endl;
-    // }
-    // std::cout << "###" << std::endl;
+
     return all_sequences;
 }
 
@@ -160,6 +149,7 @@ static void ompMerge(const std::vector<std::string>& sequences, const std::strin
      */
     if (sequences.size() < 2 * num_threads) {
         kWayMergeFiles(sequences, output_file, MAX_MEMORY);
+        std::cout << "son capitato qui" << std::endl;
         return;
     }
 

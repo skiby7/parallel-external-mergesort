@@ -19,11 +19,13 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <iostream>
+#include <linux/magic.h>
 #include <queue>
 #include <stdlib.h>
 #include <string>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/vfs.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <vector>
@@ -87,7 +89,7 @@ static void generateFile(std::string filename) {
         for (size_t j = 0; j < record.len; j++)
             record.rpayload[j] = rand() & 0xFF;
 
-        size += sizeof(record) + record.len;
+        size += record.size();
         records.push_back(record);
 
         if (size > MAX_MEMORY) {
@@ -171,32 +173,6 @@ static size_t getFileSize(const std::string filename) {
     return stat_buf.st_size;
 }
 
-// class Reporter
-//   {
-//     public:
-//       Reporter(std::string Caller, std::string File, int Line)
-//         : caller_(Caller)
-//         , file_(File)
-//         , line_(Line)
-//       {}
-
-//       int operator()(std::string filename)
-//       {
-//         std::cout
-//           << "Reporter: FunctionName() is being called by "
-//           << caller_ << "() in " << file_ << ":" << line_ << std::endl;
-//         // can use the original name here, as it is still defined
-//         return getFileSize(filename);
-//       }
-//     private:
-//       std::string   caller_;
-//       std::string   file_;
-//       int           line_;
-
-//   };
-// #  undef getFileSize
-// #  define getFileSize Reporter(__FUNCTION__,__FILE__,__LINE__)
-
 static bool deleteFile(const char* filename) {
     if (unlink(filename) == 0) {
         return true;
@@ -221,10 +197,6 @@ static int openFile(const std::string& filename, bool append) {
     return fd;
 }
 
-
-
-
-
 /**
  * Read records from a file into a container that can be a vector, a deque or a priority queue.
  * It reads a chunk of data from the file and parses it into records to minimize the number of system calls.
@@ -236,23 +208,15 @@ static int openFile(const std::string& filename, bool append) {
  * @return The number of bytes read from the file.
  */
 template<typename Container>
-static size_t readRecordsFromFile(const std::string& filename, Container& records, size_t offset, size_t max_mem) {
-    int fd = openFile(filename);
-    if (fd < 0) {
-        std::cerr << "openFile failed for " << filename << ": " << strerror(errno) << std::endl;
-        exit(EXIT_FAILURE);
-    }
-
+static size_t readRecordsFromFile(int fd, Container& records, size_t offset, size_t max_mem) {
     /* Get file size */
     struct stat st;
     if (fstat(fd, &st) < 0) {
         std::cerr << "fstat failed: " << strerror(errno) << std::endl;
-        close(fd);
         exit(EXIT_FAILURE);
     }
     size_t file_size = static_cast<size_t>(st.st_size);
     if (offset >= file_size) {
-        close(fd);
         return 0; // nothing to read
     }
 
@@ -279,14 +243,12 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
     size_t start_in_map = offset - map_offset;  // where parsing starts within map
     size_t max_map_len = std::min(max_mem + start_in_map, file_size - map_offset);
     if (max_map_len == 0) {
-        close(fd);
         return 0;
     }
 
     void* mapped = mmap(nullptr, max_map_len, PROT_READ, MAP_PRIVATE, fd, map_offset);
     if (mapped == MAP_FAILED) {
         std::cerr << "mmap failed: " << strerror(errno) << std::endl;
-        close(fd);
         exit(EXIT_FAILURE);
     }
 
@@ -331,7 +293,6 @@ static size_t readRecordsFromFile(const std::string& filename, Container& record
     }
 
     munmap(mapped, max_map_len);
-    close(fd);
     return total_bytes_parsed;
 }
 
@@ -356,7 +317,7 @@ static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
     if constexpr (!std::is_same_v<Container, std::priority_queue<Record, std::vector<Record>, RecordComparator>>) {
         if (batch_size <= 0)
             for (const auto& record : records)
-                batch_size += sizeof(record.key) + sizeof(record.len) + record.len;
+                batch_size += record.size();
     } else {
         if (batch_size < 0) {
             std::cerr << "Invalid size" << std::endl;
@@ -414,4 +375,6 @@ static ssize_t appendToFile(int fd, Container&& records, ssize_t size) {
 
     return static_cast<ssize_t>(batch_size);
 }
-#endif // !_COMMON_HPP
+
+
+#endif // _COMMON_HPP

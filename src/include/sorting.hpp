@@ -47,7 +47,7 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
 
     size_t bytes_to_process1 = getFileSize(file1);
     size_t bytes_to_process2 = getFileSize(file2);
-    size_t usable_mem = max_mem / 4;
+    size_t usable_mem = max_mem / 3;
 
     size_t bytes_read1 = 0;
     size_t bytes_read2 = 0;
@@ -56,22 +56,23 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
 
     bool use_b1 = false;
 
-    int fd = openFile(output_filename);
-
+    int out_fd = openFile(output_filename);
+    int fd1 = openFile(file1);
+    int fd2 = openFile(file2);
     // Initial buffer fills
-    bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
-    bytes_read2 += readRecordsFromFile(file2, buffer2, bytes_read2, usable_mem);
+    bytes_read1 += readRecordsFromFile(fd1, buffer1, bytes_read1, usable_mem);
+    bytes_read2 += readRecordsFromFile(fd2, buffer2, bytes_read2, usable_mem);
 
     while (!buffer1.empty() || !buffer2.empty() ||
                bytes_read1 < bytes_to_process1 || bytes_read2 < bytes_to_process2) {
         // Refill buffer1 if needed and possible
         if (buffer1.empty() && bytes_read1 < bytes_to_process1)
-            bytes_read1 += readRecordsFromFile(file1, buffer1, bytes_read1, usable_mem);
+            bytes_read1 += readRecordsFromFile(fd1, buffer1, bytes_read1, usable_mem);
 
 
 
         if (buffer2.empty() && bytes_read2 < bytes_to_process2)
-            bytes_read2 += readRecordsFromFile(file2, buffer2, bytes_read2, usable_mem);
+            bytes_read2 += readRecordsFromFile(fd2, buffer2, bytes_read2, usable_mem);
 
         if (buffer1.empty()) use_b1 = false;
         else if (buffer2.empty()) use_b1 = true;
@@ -80,46 +81,77 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
 
         if (use_b1) {
             Record r = buffer1.front();
-            out_buf_size += sizeof(r.key) + sizeof(r.len) + r.len;
+            out_buf_size += r.size();
             output_buffer.push_back(std::move(buffer1.front()));
             buffer1.pop_front();
         } else {
             Record r = buffer2.front();
-            out_buf_size += sizeof(r.key) + sizeof(r.len) + r.len;
+            out_buf_size += r.size();
             output_buffer.push_back(std::move(buffer2.front()));
             buffer2.pop_front();
         }
 
         if (out_buf_size >= usable_mem) {
-            bytes_written += appendToFile(fd, std::move(output_buffer), out_buf_size);
+            bytes_written += appendToFile(out_fd, std::move(output_buffer), out_buf_size);
             out_buf_size = 0;
             output_buffer.clear();
         }
     }
 
     if (!output_buffer.empty())
-        bytes_written += appendToFile(fd, std::move(output_buffer), out_buf_size);
+        bytes_written += appendToFile(out_fd, std::move(output_buffer), out_buf_size);
 
 
+    close(fd1);
+    close(fd2);
+    close(out_fd);
     deleteFile(file1.c_str());
     deleteFile(file2.c_str());
-    close(fd);
 }
 
 struct BufferState {
-    std::string filename;
+    int fd;
     std::deque<Record> buffer;
     size_t bytes_read = 0;
     size_t total_bytes = 0;
     size_t file_index = 0;
+    size_t usable_mem = 0;
+    size_t available_mem = 0;
 
-    BufferState(std::string name, size_t index)
-        : filename(std::move(name)), file_index(index) {
-            total_bytes = getFileSize(filename);
+    BufferState(int fd, std::string name, size_t index, size_t usable_mem)
+        : fd(fd), file_index(index), usable_mem(usable_mem), available_mem(usable_mem) {
+            total_bytes = getFileSize(name);
     }
 
     bool hasMoreData() const {
         return !buffer.empty() || bytes_read < total_bytes;
+    }
+
+    void refill() {
+        size_t last_read = readRecordsFromFile(
+            fd, buffer, bytes_read, std::min(available_mem, usable_mem));
+        // std::cout << "Refilled buffer " << filename << " with " << last_read << " bytes" << std::endl;
+        bytes_read += last_read;
+        available_mem -= last_read;
+    }
+
+    bool empty() const {
+        return buffer.empty();
+    }
+
+    bool finished() const {
+        return bytes_read == total_bytes;
+    }
+
+    Record get_front() {
+        Record record = std::move(buffer.front());
+        buffer.pop_front();
+        available_mem += record.size();
+        return record;
+    }
+
+    void close_fd() {
+        close(fd);
     }
 };
 
@@ -132,20 +164,21 @@ struct BufferState {
  * @param output_filename The output file name.
  * @param max_mem The maximum memory available for sorting.
  */
+
 static void kWayMergeFiles(const std::vector<std::string>& input_files,
                            const std::string& output_filename,
                            const ssize_t max_mem) {
-    size_t usable_mem = max_mem / 4;
     size_t num_files = input_files.size();
-
+    size_t out_buffer_memory = max_mem / 3;
+    /* Considering that I'm testing with at max 64 bytes payload, 4k are enough */
+    size_t usable_mem = std::max((max_mem - out_buffer_memory) / num_files, 4096UL);
     std::vector<BufferState> buffers;
     buffers.reserve(num_files);
 
     // Initialize all buffer states
-    for (size_t i = 0; i < num_files; ++i) {
-        buffers.emplace_back(input_files[i], i);
-        buffers[i].bytes_read += readRecordsFromFile(
-            buffers[i].filename, buffers[i].buffer, buffers[i].bytes_read, usable_mem);
+    for (size_t i = 0; i < num_files; i++) {
+        buffers.emplace_back(openFile(input_files[i]), input_files[i], i, usable_mem);
+        buffers[i].refill();
     }
 
     std::priority_queue<
@@ -155,10 +188,9 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
            > min_heap;
 
     // Prime the heap
-    for (size_t i = 0; i < num_files; ++i) {
-        if (!buffers[i].buffer.empty()) {
-            min_heap.emplace(buffers[i].buffer.front(), i);
-            buffers[i].buffer.pop_front();
+    for (size_t i = 0; i < num_files; i++) {
+        if (!buffers[i].empty()) {
+            min_heap.emplace(buffers[i].get_front(), i);
         }
     }
 
@@ -166,8 +198,8 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
     size_t out_buf_size = 0;
     size_t bytes_written = 0;
 
-    int fd = open(output_filename.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0666);
-    if (fd < 0) {
+    int out_fd = open(output_filename.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0666);
+    if (out_fd < 0) {
         std::cerr << "Error opening output file: " << output_filename
                   << " " << strerror(errno) << std::endl;
         exit(EXIT_FAILURE);
@@ -177,33 +209,33 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
         auto [record, idx] = min_heap.top();
         min_heap.pop();
 
-        out_buf_size += sizeof(record.key) + sizeof(record.len) + record.len;
+        out_buf_size += record.size();
         output_buffer.push_back(std::move(record));
 
         // Refill the buffer from the corresponding file if needed
-        if (buffers[idx].buffer.empty() && buffers[idx].bytes_read < buffers[idx].total_bytes) {
-            buffers[idx].bytes_read += readRecordsFromFile(
-                buffers[idx].filename, buffers[idx].buffer,
-                buffers[idx].bytes_read, usable_mem);
+        if (buffers[idx].empty() && !buffers[idx].finished()) {
+            buffers[idx].refill();
         }
 
-        if (!buffers[idx].buffer.empty()) {
-            min_heap.emplace(buffers[idx].buffer.front(), idx);
-            buffers[idx].buffer.pop_front();
+        if (!buffers[idx].empty()) {
+            min_heap.emplace(buffers[idx].get_front(), idx);
         }
 
-        if (out_buf_size >= usable_mem) {
-            bytes_written += appendToFile(fd, std::move(output_buffer), out_buf_size);
+        if (out_buf_size >= out_buffer_memory) {
+            bytes_written += appendToFile(out_fd, std::move(output_buffer), out_buf_size);
             output_buffer.clear();
             out_buf_size = 0;
         }
     }
 
     if (!output_buffer.empty()) {
-        bytes_written += appendToFile(fd, std::move(output_buffer), out_buf_size);
+        bytes_written += appendToFile(out_fd, std::move(output_buffer), out_buf_size);
     }
 
-    close(fd);
+    close(out_fd);
+    for (BufferState& buffer : buffers) {
+        buffer.close_fd();
+    }
 
     // Delete all input files
     for (const auto& f : input_files)
@@ -235,11 +267,12 @@ static std::vector<std::string> genSequenceFiles(
     std::priority_queue<Record, std::vector<Record>, HeapRecordComparator> heap;
     size_t heap_batch_size = 0;
     std::vector<Record> buffer;
-    int fd;
+    int out_fd;
     size_t io_offset = 0;
     std::vector<std::string> output_files;
     // Skip the unsorted initialization and push the records directly to the heap
-    ssize_t bytes_read = readRecordsFromFile(input_filename, heap, offset, std::min(usable_mem, bytes_to_process));
+    int fd = openFile(input_filename);
+    ssize_t bytes_read = readRecordsFromFile(fd, heap, offset, std::min(usable_mem, bytes_to_process));
     ssize_t run = 1, curr_offset = offset + bytes_read, free_bytes = usable_mem - bytes_read, last_read = bytes_read;
     ssize_t bytes_remaining = bytes_to_process - bytes_read;
 
@@ -247,7 +280,7 @@ static std::vector<std::string> genSequenceFiles(
         std::string output_filename = output_filename_prefix + std::to_string(run);
         output_files.push_back(output_filename);
 
-        fd = openFile(output_filename);
+        out_fd = openFile(output_filename);
         bytes_remaining = bytes_to_process - bytes_read;
 
         heap_batch_size = std::max(1UL, heap.size()/20);
@@ -261,14 +294,14 @@ static std::vector<std::string> genSequenceFiles(
                 record_key = record.key;
 
                 // Flush the buffer to the output file and store the bytes freed
-                free_bytes += sizeof(record.key) + sizeof(record.len) + record.len;
-                output_buffer_size += sizeof(record.key) + sizeof(record.len) + record.len;
+                free_bytes += record.size();
+                output_buffer_size += record.size();
                 output_buffer.push_back(std::move(record));
             }
             // Now record key is the last read
             if (bytes_remaining > 0) {
                 // If there are bytes remained to process, read them into the buffer or at least read some bytes
-                last_read = readRecordsFromFile(input_filename, buffer, curr_offset, std::min(bytes_remaining, free_bytes));
+                last_read = readRecordsFromFile(fd, buffer, curr_offset, std::min(bytes_remaining, free_bytes));
                 // If I manage to read something I have to update the free_bytes counter
                 // And the bytes_read counter
                 free_bytes -= last_read;
@@ -283,7 +316,7 @@ static std::vector<std::string> genSequenceFiles(
             buffer.clear();
 
             if (output_buffer_size > max_memory - usable_mem) {
-                io_offset += appendToFile(fd, std::move(output_buffer), output_buffer_size);
+                io_offset += appendToFile(out_fd, std::move(output_buffer), output_buffer_size);
                 output_buffer.clear();
                 output_buffer_size = 0;
             }
@@ -294,13 +327,14 @@ static std::vector<std::string> genSequenceFiles(
         // Now the heap is full again and we can clear the unsorted set
         unsorted.clear();
         if (output_buffer_size) {
-            io_offset += appendToFile(fd, std::move(output_buffer), output_buffer_size);
+            io_offset += appendToFile(out_fd, std::move(output_buffer), output_buffer_size);
             output_buffer.clear();
             output_buffer_size = 0;
         }
-        close(fd);
+        close(out_fd);
         run++;
     }
+    close(fd);
     return output_files;
 }
 
@@ -327,11 +361,11 @@ static std::vector<std::string> genSortedRunsWithSort(
     size_t curr_offset = offset;
     size_t run = 1;
     std::vector<std::string> output_files;
-
+    int input_fd = openFile(input_filename);
     while (bytes_read < bytes_to_process) {
         std::vector<Record> buffer;
         size_t chunk_size = std::min(usable_mem, bytes_to_process - bytes_read);
-        ssize_t actual_bytes_read = readRecordsFromFile(input_filename, buffer, curr_offset, chunk_size);
+        ssize_t actual_bytes_read = readRecordsFromFile(input_fd, buffer, curr_offset, chunk_size);
         if (actual_bytes_read <= 0) break;
 
         curr_offset += actual_bytes_read;
@@ -349,6 +383,7 @@ static std::vector<std::string> genSortedRunsWithSort(
 
         run++;
     }
+    close(input_fd);
     return output_files;
 }
 

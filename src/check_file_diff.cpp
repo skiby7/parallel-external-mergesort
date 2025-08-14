@@ -12,8 +12,14 @@ int main(int argc, char* argv[]) {
     std::string filename2 = argv[start + 1];
     std::vector<Record> records1;
     std::vector<Record> records2;
-    readRecordsFromFile(filename1, records1, 0, getFileSize(filename1));
-    readRecordsFromFile(filename2, records2, 0, getFileSize(filename2));
+    int fd1 = openFile(filename1);
+    int fd2 = openFile(filename2);
+    if (fd1 < 0 || fd2 < 0) {
+        std::cerr << "openFile failed for " << filename1 << " or " << filename2 << ": " << strerror(errno) << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    readRecordsFromFile(fd1, records1, 0, getFileSize(filename1));
+    readRecordsFromFile(fd2, records2, 0, getFileSize(filename2));
     assert(records1.size() == records2.size());
     for (size_t i = 0; i < records1.size(); ++i) {
         if (
