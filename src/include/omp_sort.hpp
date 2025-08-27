@@ -11,7 +11,7 @@
 #include <vector>
 
 
-static std::vector<std::string> chunkFile(const std::string& filename, const std::string& run_prefix) {
+static std::vector<std::string> genRuns(const std::string& filename, const std::string& run_prefix) {
     size_t num_threads = omp_get_max_threads();
     size_t file_size = getFileSize(filename);
     size_t max_mem_per_worker = MAX_MEMORY / num_threads;
@@ -149,7 +149,6 @@ static void ompMerge(const std::vector<std::string>& sequences, const std::strin
      */
     if (sequences.size() < 2 * num_threads) {
         kWayMergeFiles(sequences, output_file, MAX_MEMORY);
-        std::cout << "son capitato qui" << std::endl;
         return;
     }
 

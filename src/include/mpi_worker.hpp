@@ -17,12 +17,17 @@
 #include <unistd.h>
 #include <vector>
 
-static void worker(std::string tmp_location) {
+static void worker(std::string tmp_location, size_t world_size) {
     int fd = 0, done = 0;
-    size_t accumulated_size = 0, read_size = 0, offset = 0, size = 0;
-    // std::priority_queue<Record, std::vector<Record>, RecordComparator> records;
+    size_t accumulated_size = 0, read_size = 0, offset = 0;
+    int size = 0;
     std::vector<Record> records;
-    std::vector<char> send_buf;
+    /**
+     * The master receives the sequences concurrently from all the workers so to respect
+     * memory constraints we can send up to The total memory divided by the number of workers minus the master
+     */
+    size_t send_buf_size = MAX_MEMORY/(world_size-1);
+    std::vector<char> send_buf(send_buf_size);
     std::filesystem::path tmp_path = tmp_location + "/" + generateUUID();
     if (!std::filesystem::create_directories(tmp_path)) {
         std::cerr << "Canot create " << tmp_path << std::endl;
@@ -32,7 +37,6 @@ static void worker(std::string tmp_location) {
     std::string merge_prefix = tmp_path.string() + "/merge#";
     std::string output_file = tmp_path.string() + "/output.dat";
     std::vector<std::string> sequences;
-
     while (true) {
         MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         if (size == 0) break;
@@ -83,12 +87,14 @@ static void worker(std::string tmp_location) {
         close(fd);
         accumulated_size = 0;
     }
+
+    /* Setting the number of threads for the merge phase */
+    omp_set_num_threads(NTHREADS);
     ompMerge(sequences, merge_prefix, output_file);
     fd = openFile(output_file);
 
-    // The receiver can only read up to MAX_MEMORY/2 bytes at a time
-    send_buf.reserve(MAX_MEMORY/2);
-    while ((read_size = read(fd, send_buf.data(), MAX_MEMORY/2)) > 0) {
+    // The receiver can only read up to send_buf_size bytes at a time
+    while ((read_size = read(fd, send_buf.data(), send_buf_size)) > 0) {
         int send_size = read_size;
         MPI_Send(&send_size, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
         MPI_Send(send_buf.data(), send_size, MPI_CHAR, 0, 1, MPI_COMM_WORLD);

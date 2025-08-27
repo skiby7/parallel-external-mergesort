@@ -14,4 +14,4 @@ static bool KWAY_MERGE = false;
 static char TMP_LOCATION[PATH_MAX+1] = "/tmp";
 static bool FF_NO_MAPPING = true;
 
-#endif // !_CONFIG_HPP
+#endif // _CONFIG_HPP

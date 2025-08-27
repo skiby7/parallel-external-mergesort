@@ -33,7 +33,7 @@ static void master(const std::string& filename, int world_size) {
     const unsigned int num_workers = world_size - 1;
 
     size_t worker_idx = 0;
-    std::vector<char> buffer(MAX_MEMORY / 2);
+    std::vector<char> buffer(MAX_MEMORY);
     size_t bytes_in_buffer = 0;
     size_t buffer_offset = 0;
 
@@ -71,13 +71,13 @@ static void master(const std::string& filename, int world_size) {
             buffer_offset += len;
         }
 
-        // Send to workers. Starting from 1 because rank 0 is the master
+        /* Send to workers. Starting from 1 because rank 0 is the master */
         for (unsigned int node = 1; node <= num_workers; node++) {
-            std::vector<char> send_buf;
-
-            int chunk_size = node_chunks[node-1].size();
+            int chunk_size = (int)node_chunks[node-1].size();
+            if (chunk_size == 0)
+                    std::cout << "Worker " << node << " received no data." << std::endl;
             MPI_Send(&chunk_size, 1, MPI_INT, node, 0, MPI_COMM_WORLD);
-            if (node_chunks[node-1].size() > 0)
+            if (chunk_size > 0)
                 MPI_Send(node_chunks[node-1].data(), node_chunks[node-1].size(), MPI_CHAR, node, 0, MPI_COMM_WORLD);
 
             node_chunks[node-1].clear();
@@ -125,10 +125,10 @@ static void master(const std::string& filename, int world_size) {
     }
 
     /**
-     * Only the master node access to the disk and merge the sorted chunks
+     * Only the master node access the disk and merges the sorted chunks
      */
-
+     omp_set_num_threads(NTHREADS);
      ompMerge(sequences, merge_prefix, output_file);
-    }
+}
 
 #endif // _MPI_MASTER_HPP

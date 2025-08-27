@@ -19,15 +19,17 @@ if [ -n "$SRUN" ]; then
 else
     SRUN=""
 fi
-
+OUTPUT_FILE=$(dirname $INPUT_FILE)/output.dat
 # Using ls return code because when running on the cluster, it has to be executed remotely and not on the login node
 $SRUN ls $INPUT_FILE &> /dev/null
 INPUT_EXISTS=$?
 if [ $INPUT_EXISTS -eq 0 ]; then
-    echo "Input file already exists, please delete it first"
-    exit 1
+    echo "Input file already exists, deleting it..."
+    $SRUN rm -f $INPUT_FILE
+    # exit 1
 fi
-
+$SRUN rm -f $OUTPUT_FILE
+$SRUN mkdir -p $(dirname $INPUT_FILE)
 
 genFile() {
     echo "Generating input file with at most $PAYLOAD_SIZE bytes per item and $ITEMS_COUNT items..."
@@ -46,7 +48,7 @@ genFile() {
     fi
 }
 
-OUTPUT_FILE=$(dirname $INPUT_FILE)/output.dat
+
 TIMESTAMP=$(date +%s)
 LOG_FILE=run_${TIMESTAMP}.log
 
@@ -108,15 +110,16 @@ run_mpi_strong() {
     NTHREADS=${MPI_THREADS-32} # Using the best speedup from the single node version as default
     for i in $(seq 2 ${MAX_NODES}); do
         NODELIST=$MAIN_NODE
-        for ((n=1; n<i-1; n++)); do
-            WORKER="${NODE_NAME}0$i"
+        for ((n=1; n<i+1; n++)); do
+            WORKER="${NODE_NAME}0$n"
             if [[ $WORKER != $MAIN_NODE ]]; then
-                NODELIST+=",$WORKER "
+                NODELIST+=",$WORKER"
             fi
         done
         echo -e "(nnodes=$i, nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
         if [[ -z "$SRUN" ]]; then
             MPI_RUN="mpirun -np $i"
+            echo "DEBUG: srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
         fi
         SRUN_MPI=${MPI_RUN-"srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"}
         for j in $(seq 1 $NRUNS); do
@@ -136,16 +139,17 @@ run_mpi_weak() {
     # Now the size is twice the single node version
     for i in $(seq 2 ${MAX_NODES}); do
         NODELIST=$MAIN_NODE
-        for ((n=1; n<i-1; n++)); do
-            WORKER="${NODE_NAME}0$i"
+        for ((n=1; n<i+1; n++)); do
+            WORKER="${NODE_NAME}0$n"
             if [[ $WORKER != $MAIN_NODE ]]; then
-                NODELIST+=",$WORKER "
+                NODELIST+=",$WORKER"
             fi
         done
         genFile
         echo -e "(nnodes=$i, filesize=$($SRUN stat -c%s $INPUT_FILE | tr -d '\n'), nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
         if [[ -z "$SRUN" ]]; then
             MPI_RUN="mpirun -np $i"
+            echo "DEBUG: srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
         fi
         SRUN_MPI=${MPI_RUN-"srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"}
         for j in $(seq 1 $NRUNS); do
@@ -165,8 +169,8 @@ cleanup() {
 
 trap cleanup EXIT
 genFile
-run_seq
-run_parallel
+# run_seq
+# run_parallel
 echo "#################################" | tee -a results/$LOG_FILE
 run_mpi_strong
 run_mpi_weak

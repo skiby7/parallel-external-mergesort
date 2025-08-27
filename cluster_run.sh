@@ -1,14 +1,9 @@
 #!/bin/bash
 
 
-LOCATIONS="/tmp/mergesort_ls test"
+FILES="/tmp/mergesort_ls/test.dat test/test.dat"
 
-for location in $LOCATIONS
+for file in $FILES
 do
-    SRUN=1 ./benchmark.sh $location 64 25000000
-done
-
-for location in $LOCATIONS
-do
-    SRUN=1 ./benchmark.sh $location 16 100000000
+    SRUN=1 ./benchmark.sh $file 64 50000000
 done

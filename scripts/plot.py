@@ -1,3 +1,4 @@
+import os
 import re
 import sys
 import numpy as np
@@ -154,7 +155,8 @@ fig.update_layout(
     yaxis_title="Speedup",
     template="plotly_white"
 )
-fig.show()
+if os.getenv("PLOT"):
+    fig.show()
 
 # === Sequential binary vs k-way ===
 fig2 = go.Figure(data=[
@@ -166,7 +168,8 @@ fig2.update_layout(
     yaxis_title="Time (s)",
     template="plotly_white"
 )
-fig2.show()
+if os.getenv("PLOT"):
+    fig2.show()
 
 # === Separate plot: MPI-weak actual vs ideal ===
 # For weak scaling, ideal speedup grows linearly with the number of nodes
@@ -197,13 +200,37 @@ fig_weak.update_layout(
     yaxis_title="Speedup",
     template="plotly_white"
 )
-fig_weak.show()
+if os.getenv("PLOT"):
+    fig_weak.show()
 
-print ("#let res = (")
+print (f"#let {os.path.basename(base)}_speed = (")
 print("  threads: ", tuple(threads_all), "\b,")
 print("  omp: ", tuple([round(float(i), 2) for i in omp_speedup.values()]), "\b,")
 print("  ff: ", tuple([round(float(i), 2) for i in ff_speedup.values()]), "\b,")
 print("  ff_nm: ", tuple([round(float(i), 2) for i in ff_nm_speedup.values()]), "\b,")
 print("  mpi_strong: ", tuple([round(float(i), 2) for i in mpi_strong_speedup.values()]), "\b,")
 print("  mpi_weak: ", tuple([round(float(i), 2) for i in mpi_weak_speedup.values()]), "\b,")
+print("  ylim: 10,")
+print("  width: 6cm,")
+print("  height: 5cm,")
+print("  title: [],")
+print(")")
+
+omp_eff      = {t: omp_speedup[t]/t for t in omp_speedup}
+ff_eff       = {t: ff_speedup[t]/t for t in ff_speedup}
+ff_nm_eff    = {t: ff_nm_speedup[t]/t for t in ff_nm_speedup}
+mpi_strong_eff = {n: mpi_strong_speedup[n]/n for n in mpi_strong_speedup}
+mpi_weak_eff   = {n: mpi_weak_speedup[n]/n for n in mpi_weak_speedup}
+
+print(f"#let {os.path.basename(base)}_eff = (")
+print("  threads: ", tuple(threads_all), "\b,")
+print("  omp: ", tuple([round(float(i), 2) for i in omp_eff.values()]), "\b,")
+print("  ff: ", tuple([round(float(i), 2) for i in ff_eff.values()]), "\b,")
+print("  ff_nm: ", tuple([round(float(i), 2) for i in ff_nm_eff.values()]), "\b,")
+print("  mpi_strong: ", tuple([round(float(i), 2) for i in mpi_strong_eff.values()]), "\b,")
+print("  mpi_weak: ", tuple([round(float(i), 2) for i in mpi_weak_eff.values()]), "\b,")
+print("  ylim: 10,")
+print("  width: 6cm,")
+print("  height: 5cm,")
+print("  title: [],")
 print(")")

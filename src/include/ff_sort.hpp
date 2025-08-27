@@ -219,4 +219,4 @@ struct WorkerNode : ff::ff_node_t<work_t> {
 
 
 
-#endif // !_FF_SORT_HPP
+#endif // _FF_SORT_HPP

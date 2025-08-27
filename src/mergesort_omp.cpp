@@ -29,7 +29,7 @@ int main(int argc, char *argv[]) {
     std::string output_file = p.parent_path().string() + "/output.dat";
 
     TIMERSTART(mergesort_omp)
-    std::vector<std::string> sequences = chunkFile(filename, run_prefix);
+    std::vector<std::string> sequences = genRuns(filename, run_prefix);
     ompMerge(sequences, merge_prefix, output_file);
     TIMERSTOP(mergesort_omp)
 
