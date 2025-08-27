@@ -1,0 +1,30 @@
+#################################
+(nnodes=2, nthreads=32, max_mem=237504225)
+# elapsed time (mergesort_mpi): 245.391s
+# elapsed time (mergesort_mpi): 246.322s
+# elapsed time (mergesort_mpi): 243.933s
+(nnodes=3, nthreads=32, max_mem=237504225)
+# elapsed time (mergesort_mpi): 160.775s
+# elapsed time (mergesort_mpi): 160.793s
+# elapsed time (mergesort_mpi): 164.19s
+(nnodes=4, nthreads=32, max_mem=237504225)
+# elapsed time (mergesort_mpi): 180.351s
+# elapsed time (mergesort_mpi): 182.284s
+# elapsed time (mergesort_mpi): 181.971s
+(nnodes=5, nthreads=32, max_mem=237504225)
+# elapsed time (mergesort_mpi): 132.424s
+# elapsed time (mergesort_mpi): 132.256s
+# elapsed time (mergesort_mpi): 131.65s
+(nnodes=6, nthreads=32, max_mem=237504225)
+# elapsed time (mergesort_mpi): 106.761s
+# elapsed time (mergesort_mpi): 104.744s
+# elapsed time (mergesort_mpi): 107.508s
+(nnodes=7, nthreads=32, max_mem=237504225)
+# elapsed time (mergesort_mpi): 101.001s
+# elapsed time (mergesort_mpi): 95.0386s
+# elapsed time (mergesort_mpi): 101.122s
+(nnodes=8, nthreads=32, max_mem=237504225)
+# elapsed time (mergesort_mpi): 95.3567s
+# elapsed time (mergesort_mpi): 94.8339s
+# elapsed time (mergesort_mpi): 95.2769s
+#################################

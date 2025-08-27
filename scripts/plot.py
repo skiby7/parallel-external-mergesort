@@ -98,11 +98,12 @@ nodes_weak = []
 mpi_weak_speedup = {}
 if len(weak_entries) > 0:
     base_nodes, base_fs, base_time = weak_entries[0]
-
+    print(base_time)
     for nn, fs, t in weak_entries:
         t_ideal = base_time * (fs / base_fs)
-        mpi_weak_speedup[nn] = t_ideal / t
-
+        # mpi_weak_speedup[nn] = t_ideal / t
+        mpi_weak_speedup[nn] = base_time / t
+    print(mpi_weak_speedup)
     nodes_weak = sorted(mpi_weak_speedup)
 
 

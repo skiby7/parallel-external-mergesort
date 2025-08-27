@@ -74,8 +74,6 @@ static void master(const std::string& filename, int world_size) {
         /* Send to workers. Starting from 1 because rank 0 is the master */
         for (unsigned int node = 1; node <= num_workers; node++) {
             int chunk_size = (int)node_chunks[node-1].size();
-            if (chunk_size == 0)
-                    std::cout << "Worker " << node << " received no data." << std::endl;
             MPI_Send(&chunk_size, 1, MPI_INT, node, 0, MPI_COMM_WORLD);
             if (chunk_size > 0)
                 MPI_Send(node_chunks[node-1].data(), node_chunks[node-1].size(), MPI_CHAR, node, 0, MPI_COMM_WORLD);
