@@ -40,11 +40,16 @@ int main(int argc, char *argv[]) {
     if (FF_NO_MAPPING) // Def value is true
         farm.no_mapping();
 
+    farm.blocking_mode(FF_BLOCKING_MODE);
+
+    std::string label = FF_NO_MAPPING ? "mergesort_ff_no_mapping" : "mergesort_ff";
+    if (FF_BLOCKING_MODE)
+        label += "_blocking";
     timer_start();
     if (farm.run_and_wait_end() < 0) {
         std::cout << "Error running the farm" << std::endl;
     }
-    timer_stop(FF_NO_MAPPING ? "mergesort_ff_no_mapping" : "mergesort_ff");
+    timer_stop(label);
 
     return 0;
 }

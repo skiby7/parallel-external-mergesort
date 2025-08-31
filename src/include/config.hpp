@@ -13,5 +13,6 @@ static uint64_t MAX_MEMORY = 1ULL << 33; // 8 GB
 static bool KWAY_MERGE = false;
 static char TMP_LOCATION[PATH_MAX+1] = "/tmp";
 static bool FF_NO_MAPPING = true;
+static bool FF_BLOCKING_MODE = false;
 
 #endif // _CONFIG_HPP

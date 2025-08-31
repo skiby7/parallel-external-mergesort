@@ -1,8 +1,3 @@
-/**
- * This file utilities functions shared between the various merge
- * implementations and the file generator.
- */
-
 #ifndef _COMMON_HPP
 #define _COMMON_HPP
 
@@ -285,7 +280,7 @@ static size_t readRecordsFromFile(int fd, Container& records, size_t offset, siz
             std::is_same_v<Container, std::deque<Record>>) {
             records.push_back(std::move(rec));
         } else {
-            records.push(std::move(rec)); // for e.g. priority_queue
+            records.push(std::move(rec));
         }
 
         pos += record_size;

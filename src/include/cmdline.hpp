@@ -20,6 +20,7 @@ static inline void usage(const char *argv0) {
     std::printf(" -m M: set the max memory usage (default=%ld)\n", MAX_MEMORY);
     std::printf(" -p string: set the tmp location for the worker nodes (MPI) (default=%s)\n", TMP_LOCATION);
     std::printf(" -x: set FF_NO_MAPPING variable to false (default=%s)\n", FF_NO_MAPPING ? "true" : "false");
+    std::printf(" -y: set FF_BLOCKING_MODE variable to false (default=%s)\n", FF_BLOCKING_MODE ? "true" : "false");
     std::printf("--------------------\n");
     /**
      * These options are still relevant for the generation of the file,
@@ -45,7 +46,7 @@ static bool isNumber(const char* s, long &n) {
 
 static inline int parseCommandLine(int argc, char *argv[]) {
     extern char *optarg;
-    const std::string optstr = "r:s:t:d:m:p:kx";
+    const std::string optstr = "r:s:t:d:m:p:kxy";
     long opt, start = 1;
 
     while ((opt = getopt(argc, argv, optstr.c_str())) != -1) {
@@ -56,6 +57,10 @@ static inline int parseCommandLine(int argc, char *argv[]) {
             } break;
             case 'x': {
                 FF_NO_MAPPING = false;
+                start += 1;
+            } break;
+            case 'y': {
+                FF_BLOCKING_MODE = true;
                 start += 1;
             } break;
             case 'p': {
@@ -120,4 +125,4 @@ static inline int parseCommandLine(int argc, char *argv[]) {
     }
     return start;
 }
-#endif // !_CMDLINE_HPP
+#endif // _CMDLINE_HPP

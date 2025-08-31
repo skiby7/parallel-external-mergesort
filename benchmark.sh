@@ -99,6 +99,8 @@ run_parallel() {
             $SRUN /bin/rm $OUTPUT_FILE
             $SRUN ./mergesort_ff -x -t "$i" -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
             $SRUN /bin/rm $OUTPUT_FILE
+            $SRUN ./mergesort_ff -y -t "$i" -m "$USABLE_MEM" "$INPUT_FILE" | tee -a results/$LOG_FILE
+            $SRUN /bin/rm $OUTPUT_FILE
         done
     done
 }
@@ -169,8 +171,8 @@ cleanup() {
 
 trap cleanup EXIT
 genFile
-# run_seq
-# run_parallel
+run_seq
+run_parallel
 echo "#################################" | tee -a results/$LOG_FILE
 run_mpi_strong
 run_mpi_weak

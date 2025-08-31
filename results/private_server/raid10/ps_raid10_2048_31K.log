@@ -80,3 +80,39 @@
 # elapsed time (mergesort_ff_no_mapping): 9.67062s
 # elapsed time (mergesort_ff): 10.5125s
 #################################
+(nthreads=2, max_mem=32440457)
+# elapsed time (mergesort_ff_no_mapping_blocking): 11.7865s
+# elapsed time (mergesort_ff_no_mapping_blocking): 11.7006s
+#################################
+(nthreads=4, max_mem=32440457)
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.6629s
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.41865s
+#################################
+(nthreads=8, max_mem=32440457)
+# elapsed time (mergesort_ff_no_mapping_blocking): 7.72701s
+# elapsed time (mergesort_ff_no_mapping_blocking): 7.56111s
+#################################
+(nthreads=12, max_mem=32440457)
+# elapsed time (mergesort_ff_no_mapping_blocking): 7.9806s
+# elapsed time (mergesort_ff_no_mapping_blocking): 7.97622s
+#################################
+(nthreads=16, max_mem=32440457)
+# elapsed time (mergesort_ff_no_mapping_blocking): 10.6996s
+# elapsed time (mergesort_ff_no_mapping_blocking): 7.83941s
+#################################
+(nthreads=20, max_mem=32440457)
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.44311s
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.71301s
+#################################
+(nthreads=24, max_mem=32440457)
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.56409s
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.64285s
+#################################
+(nthreads=28, max_mem=32440457)
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.65079s
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.8828s
+#################################
+(nthreads=32, max_mem=32440457)
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.65255s
+# elapsed time (mergesort_ff_no_mapping_blocking): 8.73267s
+#################################

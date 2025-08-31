@@ -101,9 +101,7 @@ struct Master : ff::ff_monode_t<work_t> {
 
             while (buffer_offset + sizeof(uint64_t) + sizeof(uint32_t) <= bytes_in_buffer) {
                 size_t local_offset = buffer_offset;
-
-                buffer_offset += sizeof(uint64_t); // skip key
-
+                buffer_offset += sizeof(uint64_t);
                 uint32_t len = *reinterpret_cast<uint32_t*>(&buffer[buffer_offset]);
                 buffer_offset += sizeof(uint32_t);
 

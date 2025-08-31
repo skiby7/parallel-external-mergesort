@@ -35,6 +35,7 @@ seq_kway_times   = []
 omp_times        = defaultdict(list)
 ff_times         = defaultdict(list)
 ff_nm_times      = defaultdict(list)
+ff_bl_times      = defaultdict(list)
 
 
 
@@ -54,6 +55,8 @@ for header, body in re.findall(section_pattern, logs['seq'], re.MULTILINE):
                 ff_times[nthreads].append(float(t))
             elif algo == 'mergesort_ff_no_mapping':
                 ff_nm_times[nthreads].append(float(t))
+            elif algo == 'mergesort_ff_no_mapping_blocking' or algo == 'mergesort_ff_blocking':
+                ff_bl_times[nthreads].append(float(t))
 
 seq_binary_avg = np.mean(seq_binary_times)
 seq_kway_avg   = np.mean(seq_kway_times)
@@ -62,10 +65,12 @@ best_seq       = min(seq_binary_avg, seq_kway_avg)
 omp_avg      = {t: np.mean(v) for t, v in omp_times.items()}
 ff_avg       = {t: np.mean(v) for t, v in ff_times.items()}
 ff_nm_avg    = {t: np.mean(v) for t, v in ff_nm_times.items()}
+ff_bl_avg    = {t: np.mean(v) for t, v in ff_bl_times.items()}
 omp_speedup  = {t: best_seq/v for t, v in omp_avg.items()}
 ff_speedup   = {t: best_seq/v for t, v in ff_avg.items()}
 ff_nm_speedup= {t: best_seq/v for t, v in ff_nm_avg.items()}
-threads_all  = sorted(set(omp_speedup) | set(ff_speedup) | set(ff_nm_speedup))
+ff_bl_speedup= {t: best_seq/v for t, v in ff_bl_avg.items()}
+threads_all  = sorted(set(omp_speedup) | set(ff_speedup) | set(ff_nm_speedup) | set(ff_bl_speedup))
 
 # --- 2) MPI-strong scaling – by nnodes ---
 mpi_strong = defaultdict(list)
@@ -100,12 +105,9 @@ if len(weak_entries) > 0:
     base_nodes, base_fs, base_time = weak_entries[0]
     print(base_time)
     for nn, fs, t in weak_entries:
-        t_ideal = base_time * (fs / base_fs)
-        # mpi_weak_speedup[nn] = t_ideal / t
         mpi_weak_speedup[nn] = base_time / t
     print(mpi_weak_speedup)
     nodes_weak = sorted(mpi_weak_speedup)
-
 
 # === Plot everything together ===
 fig = go.Figure()
@@ -131,6 +133,12 @@ fig.add_trace(go.Scatter(
     name='FastFlow (with no mapping)'
 ))
 
+fig.add_trace(go.Scatter(
+    x=threads_all,
+    y=[ff_bl_speedup[t] for t in threads_all],
+    mode='lines+markers',
+    name='FastFlow (blocking)'
+))
 # MPI strong
 fig.add_trace(go.Scatter(
     x=nodes_strong,
@@ -209,6 +217,7 @@ print("  threads: ", tuple(threads_all), "\b,")
 print("  omp: ", tuple([round(float(i), 2) for i in omp_speedup.values()]), "\b,")
 print("  ff: ", tuple([round(float(i), 2) for i in ff_speedup.values()]), "\b,")
 print("  ff_nm: ", tuple([round(float(i), 2) for i in ff_nm_speedup.values()]), "\b,")
+print("  ff_bl: ", tuple([round(float(i), 2) for i in ff_bl_speedup.values()]), "\b,")
 print("  mpi_strong: ", tuple([round(float(i), 2) for i in mpi_strong_speedup.values()]), "\b,")
 print("  mpi_weak: ", tuple([round(float(i), 2) for i in mpi_weak_speedup.values()]), "\b,")
 print("  ylim: 10,")
@@ -220,6 +229,7 @@ print(")")
 omp_eff      = {t: omp_speedup[t]/t for t in omp_speedup}
 ff_eff       = {t: ff_speedup[t]/t for t in ff_speedup}
 ff_nm_eff    = {t: ff_nm_speedup[t]/t for t in ff_nm_speedup}
+ff_bl_eff    = {t: ff_bl_speedup[t]/t for t in ff_bl_speedup}
 mpi_strong_eff = {n: mpi_strong_speedup[n]/n for n in mpi_strong_speedup}
 mpi_weak_eff   = {n: mpi_weak_speedup[n]/n for n in mpi_weak_speedup}
 
@@ -228,6 +238,7 @@ print("  threads: ", tuple(threads_all), "\b,")
 print("  omp: ", tuple([round(float(i), 2) for i in omp_eff.values()]), "\b,")
 print("  ff: ", tuple([round(float(i), 2) for i in ff_eff.values()]), "\b,")
 print("  ff_nm: ", tuple([round(float(i), 2) for i in ff_nm_eff.values()]), "\b,")
+print("  ff_bl: ", tuple([round(float(i), 2) for i in ff_bl_eff.values()]), "\b,")
 print("  mpi_strong: ", tuple([round(float(i), 2) for i in mpi_strong_eff.values()]), "\b,")
 print("  mpi_weak: ", tuple([round(float(i), 2) for i in mpi_weak_eff.values()]), "\b,")
 print("  ylim: 10,")
