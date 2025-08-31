@@ -2,6 +2,7 @@
 #define _SORTING_HPP
 
 #include "common.hpp"
+#include "config.hpp"
 #include "hpc_helpers.hpp"
 #include "record.hpp"
 #include <algorithm>
@@ -385,6 +386,39 @@ static std::vector<std::string> genSequenceFilesSTL(
     }
     close(input_fd);
     return output_files;
+}
+
+static void genSequence(
+    std::vector<char> data,
+    size_t size,
+    const std::string& output_filename
+) {
+    size_t pos = 0;
+    std::vector<Record> buffer;
+    while (pos < data.size()) {
+        uint64_t key;
+        uint32_t len;
+
+        std::memcpy(&key, data.data() + pos, sizeof(key));
+        pos += sizeof(key);
+        std::memcpy(&len, data.data() + pos, sizeof(len));
+        pos += sizeof(len);
+
+
+        Record rec;
+        rec.key = key;
+        rec.len = len;
+        rec.rpayload = std::make_unique<char[]>(len);
+        std::memcpy(rec.rpayload.get(), data.data() + pos, len);
+        pos += len;
+
+        buffer.push_back(std::move(rec));
+    }
+    std::sort(buffer.begin(), buffer.end(), RecordComparator{});
+
+    int fd = openFile(output_filename);
+    appendToFile(fd, std::move(buffer), size);
+    close(fd);
 }
 
 #endif // _SORTING_HPP

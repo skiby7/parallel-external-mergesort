@@ -5,6 +5,7 @@
 #include "config.hpp"
 #include "sorting.hpp"
 #include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <omp.h>
 #include <string>
@@ -12,9 +13,9 @@
 
 
 static std::vector<std::string> genRuns(const std::string& filename, const std::string& run_prefix) {
-    size_t file_size = getFileSize(filename);
     size_t max_mem_per_worker = MAX_MEMORY / NTHREADS;
-    size_t chunk_size = std::min(file_size / 100, 3 * max_mem_per_worker); // 1% of the file or the memory per worker to keep them busy
+    size_t chunk_size = max_mem_per_worker;
+    // size_t chunk_size = std::min(file_size / 100, 3 * max_mem_per_worker); // 1% of the file or the memory per worker to keep them busy
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) {
         std::cerr << "Error opening file: " << strerror(errno) << std::endl;
@@ -73,17 +74,12 @@ static std::vector<std::string> genRuns(const std::string& filename, const std::
                     end_offset = file_offset + buffer_offset;
 
                     if (end_offset - start_offset >= chunk_size) {
-                        size_t size = end_offset - start_offset;
+                        std::vector<char> chunk_data(buffer.data(), buffer.data() + buffer_offset);
                         std::string uuid = generateUUID();
-                        #pragma omp task firstprivate(start_offset, size, uuid)
+                        #pragma omp task firstprivate(chunk_data, uuid)
                         {
-                            std::vector<std::string> seq = genSequenceFilesSTL(filename, start_offset, size, max_mem_per_worker, run_prefix + uuid);
-                            sequences[omp_get_thread_num()]
-                                .insert(
-                                    sequences[omp_get_thread_num()].end(),
-                                    std::make_move_iterator(seq.begin()),
-                                    std::make_move_iterator(seq.end())
-                                );
+                            genSequence(std::move(chunk_data), max_mem_per_worker, run_prefix + uuid);
+                            sequences[omp_get_thread_num()].push_back(run_prefix + uuid);
                         }
                         start_offset = end_offset;
                     }
@@ -93,17 +89,13 @@ static std::vector<std::string> genRuns(const std::string& filename, const std::
             }
 
             if (end_offset > start_offset) {
-                size_t size = end_offset - start_offset;
+                std::vector<char> chunk_data(buffer.data(), buffer.data() + buffer_offset);
+
                 std::string uuid = generateUUID();
-                #pragma omp task firstprivate(start_offset, size, uuid)
+                #pragma omp task firstprivate(chunk_data, uuid)
                 {
-                    std::vector<std::string> seq = genSequenceFilesSTL(filename, start_offset, size, max_mem_per_worker, run_prefix + uuid);
-                    sequences[omp_get_thread_num()]
-                        .insert(
-                            sequences[omp_get_thread_num()].end(),
-                            std::make_move_iterator(seq.begin()),
-                            std::make_move_iterator(seq.end())
-                        );
+                    genSequence(std::move(chunk_data), max_mem_per_worker, run_prefix + uuid);
+                    sequences[omp_get_thread_num()].push_back(run_prefix + uuid);
                 }
             }
 
