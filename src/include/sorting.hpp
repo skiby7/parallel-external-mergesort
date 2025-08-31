@@ -59,13 +59,11 @@ static void mergeFiles(const std::string& file1, const std::string& file2,
     int out_fd = openFile(output_filename);
     int fd1 = openFile(file1);
     int fd2 = openFile(file2);
-    // Initial buffer fills
     bytes_read1 += readRecordsFromFile(fd1, buffer1, bytes_read1, usable_mem);
     bytes_read2 += readRecordsFromFile(fd2, buffer2, bytes_read2, usable_mem);
 
     while (!buffer1.empty() || !buffer2.empty() ||
                bytes_read1 < bytes_to_process1 || bytes_read2 < bytes_to_process2) {
-        // Refill buffer1 if needed and possible
         if (buffer1.empty() && bytes_read1 < bytes_to_process1)
             bytes_read1 += readRecordsFromFile(fd1, buffer1, bytes_read1, usable_mem);
 
@@ -130,7 +128,6 @@ struct BufferState {
     void refill() {
         size_t last_read = readRecordsFromFile(
             fd, buffer, bytes_read, std::min(available_mem, usable_mem));
-        // std::cout << "Refilled buffer " << filename << " with " << last_read << " bytes" << std::endl;
         bytes_read += last_read;
         available_mem -= last_read;
     }
@@ -164,18 +161,18 @@ struct BufferState {
  * @param output_filename The output file name.
  * @param max_mem The maximum memory available for sorting.
  */
-
 static void kWayMergeFiles(const std::vector<std::string>& input_files,
                            const std::string& output_filename,
                            const ssize_t max_mem) {
     size_t num_files = input_files.size();
     size_t out_buffer_memory = max_mem / 3;
+
     /* Considering that I'm testing with at max 64 bytes payload, 4k are enough */
     size_t usable_mem = std::max((max_mem - out_buffer_memory) / num_files, 4096UL);
     std::vector<BufferState> buffers;
     buffers.reserve(num_files);
 
-    // Initialize all buffer states
+    /* Initialize all buffer states */
     for (size_t i = 0; i < num_files; i++) {
         buffers.emplace_back(openFile(input_files[i]), input_files[i], i, usable_mem);
         buffers[i].refill();
@@ -187,7 +184,7 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
                HeapPairRecordComparator
            > min_heap;
 
-    // Prime the heap
+    /* Initialize the heap */
     for (size_t i = 0; i < num_files; i++) {
         if (!buffers[i].empty()) {
             min_heap.emplace(buffers[i].get_front(), i);
@@ -212,7 +209,7 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
         out_buf_size += record.size();
         output_buffer.push_back(std::move(record));
 
-        // Refill the buffer from the corresponding file if needed
+        /* Refill the buffer from the corresponding file if needed */
         if (buffers[idx].empty() && !buffers[idx].finished()) {
             buffers[idx].refill();
         }
@@ -237,7 +234,7 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
         buffer.close_fd();
     }
 
-    // Delete all input files
+    /* Delete all input files */
     for (const auto& f : input_files)
         deleteFile(f.c_str());
 }
@@ -245,7 +242,7 @@ static void kWayMergeFiles(const std::vector<std::string>& input_files,
 /**
  * This is an implementation of the snow plow
  * technique to generate sequence files longer than the memory available.
- * It produces sequences 2M long on average, reducing the number of merge levels needed.
+ * It produces sequences 2M long on average (where M is the available memory for the heap/unsorted set), reducing the number of merge levels needed.
  *
  * @param input_filename The input file name.
  * @param offset The offset to start reading from.
@@ -270,7 +267,8 @@ static std::vector<std::string> genSequenceFiles(
     int out_fd;
     size_t io_offset = 0;
     std::vector<std::string> output_files;
-    // Skip the unsorted initialization and push the records directly to the heap
+
+    /* Skip the unsorted initialization and push the records directly to the heap */
     int fd = openFile(input_filename);
     ssize_t bytes_read = readRecordsFromFile(fd, heap, offset, std::min(usable_mem, bytes_to_process));
     ssize_t run = 1, curr_offset = offset + bytes_read, free_bytes = usable_mem - bytes_read, last_read = bytes_read;
@@ -284,7 +282,6 @@ static std::vector<std::string> genSequenceFiles(
         bytes_remaining = bytes_to_process - bytes_read;
 
         heap_batch_size = std::max(1UL, heap.size()/20);
-        // std::cout << "Heap batch size: " << heap_batch_size << std::endl;
         while (!heap.empty()) { // A run is complete when the heap is empty
             Record record;
             size_t record_key = 0;
@@ -293,17 +290,19 @@ static std::vector<std::string> genSequenceFiles(
                 heap.pop();
                 record_key = record.key;
 
-                // Flush the buffer to the output file and store the bytes freed
+                /* Flush the buffer to the output file and store the bytes freed */
                 free_bytes += record.size();
                 output_buffer_size += record.size();
                 output_buffer.push_back(std::move(record));
             }
-            // Now record key is the last read
+            /* Now record key is the last read */
             if (bytes_remaining > 0) {
-                // If there are bytes remained to process, read them into the buffer or at least read some bytes
+                /* If there are bytes remained to process, read them into the buffer or at least read some bytes */
                 last_read = readRecordsFromFile(fd, buffer, curr_offset, std::min(bytes_remaining, free_bytes));
-                // If I manage to read something I have to update the free_bytes counter
-                // And the bytes_read counter
+                /**
+                 * If I manage to read something I have to update the free_bytes counter
+                 * and the bytes_read counter
+                 */
                 free_bytes -= last_read;
                 bytes_read += last_read;
                 curr_offset += last_read;
@@ -321,10 +320,12 @@ static std::vector<std::string> genSequenceFiles(
                 output_buffer_size = 0;
             }
         }
-        // If I'm here it means that the heap is empty, so let's process the unsorted set
+
+        /* If I'm here it means that the heap is empty, so let's process the unsorted set */
         for(auto& r : unsorted)
             heap.push(std::move(r));
-        // Now the heap is full again and we can clear the unsorted set
+
+        /* Now the heap is full again and we can clear the unsorted set */
         unsorted.clear();
         if (output_buffer_size) {
             io_offset += appendToFile(out_fd, std::move(output_buffer), output_buffer_size);
@@ -349,7 +350,7 @@ static std::vector<std::string> genSequenceFiles(
  * @param max_memory The maximum memory to use.
  * @param output_filename_prefix The prefix for the output file names.
  */
-static std::vector<std::string> genSortedRunsWithSort(
+static std::vector<std::string> genSequenceFilesSTL(
     const std::string& input_filename,
     size_t offset,
     size_t bytes_to_process,
@@ -376,7 +377,6 @@ static std::vector<std::string> genSortedRunsWithSort(
         output_files.push_back(output_filename);
         int fd = openFile(output_filename);
 
-        // Reuse your existing appendToFile logic, or adapt to vector
         appendToFile(fd, std::move(buffer), actual_bytes_read);
 
         close(fd);

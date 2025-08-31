@@ -81,19 +81,23 @@ typedef struct _Record {
            << ", len=" << rec.len
            << ", payload=";
 
-        // Print payload as hex (safe for binary data)
         os << std::hex << std::setfill('0');
         for (uint32_t i = 0; i < rec.len; ++i) {
             os << std::setw(2) << (static_cast<unsigned int>(
                       static_cast<unsigned char>(rec.rpayload[i])))
                << " ";
         }
-        os << std::dec; // restore to decimal output
+        os << std::dec;
 
         os << "}";
         return os;
     }
 } Record;
+
+/**
+ * Using the priority queue to implement a heap
+ * the comparator condition must be inverted to get a min heap.
+ */
 
 struct HeapRecordComparator {
     bool operator()(Record a, Record b){

@@ -16,12 +16,6 @@
 #include <unistd.h>
 #include <vector>
 
-/**
- * TODO:
- *   - Check this function
- *   - Receive the sorted files from the workers flushing the buffer to a single file for each worker
- *   - Merge the sorted files into a single file using OMP
- */
 static void master(const std::string& filename, int world_size) {
     std::filesystem::path p(filename);
     std::string run_prefix = p.parent_path().string() + "/run#";
@@ -29,7 +23,6 @@ static void master(const std::string& filename, int world_size) {
     std::string output_file = p.parent_path().string() + "/output.dat";
     int fd = openFile(filename);
 
-    std::atomic<unsigned int> workers_done{0};
     const unsigned int num_workers = world_size - 1;
 
     size_t worker_idx = 0;
@@ -82,7 +75,8 @@ static void master(const std::string& filename, int world_size) {
         }
     }
     close(fd);
-    // Notify EOS
+
+    /* Notify EOS */
     for (unsigned int node = 1; node <= num_workers; ++node) {
         int zero = 0;
         MPI_Send(&zero, 1, MPI_INT, node, 0, MPI_COMM_WORLD);
@@ -90,8 +84,10 @@ static void master(const std::string& filename, int world_size) {
 
     int n_threads = num_workers;
     std::vector<std::string> sequences;
-    // Here I spawn one thread per worker, or the max I can spawn
-    // and each thread will receive a chunk of data from the master node
+    /**
+     * Here I spawn one thread per worker, or the max I can spawn
+     * and each thread will receive a chunk of data from the master node
+     */
     #pragma omp parallel num_threads(n_threads)
     {
         int src = omp_get_thread_num() + 1;
@@ -104,13 +100,10 @@ static void master(const std::string& filename, int world_size) {
         while (true) {
             MPI_Status status;
             int result_size;
-            // Each thread waits for a worker
 
+            /* Each thread waits for a worker */
             MPI_Recv(&result_size, 1, MPI_INT, src, 1, MPI_COMM_WORLD, &status);
-
-
             if (result_size == 0) {
-                workers_done.fetch_add(1);
                 close(fd);
                 break;
             }
@@ -122,11 +115,9 @@ static void master(const std::string& filename, int world_size) {
         }
     }
 
-    /**
-     * Only the master node access the disk and merges the sorted chunks
-     */
-     omp_set_num_threads(NTHREADS);
-     ompMerge(sequences, merge_prefix, output_file);
+    /* Only the master node access the disk and merges the sorted chunks */
+    omp_set_num_threads(NTHREADS);
+    ompMerge(sequences, merge_prefix, output_file);
 }
 
 #endif // _MPI_MASTER_HPP

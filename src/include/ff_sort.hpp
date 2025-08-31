@@ -142,7 +142,6 @@ struct Master : ff::ff_monode_t<work_t> {
             }, nullptr}, worker_id);
             submitted_sort_tasks[worker_id]++;
         }
-
         close(fd);
     }
 
@@ -201,7 +200,7 @@ struct WorkerNode : ff::ff_node_t<work_t> {
     WorkerNode(std::string base_path) : run_prefix(base_path+"/run#") {}
     work_t* svc(work_t* work) {
         if (work->sort_task)
-            work->sort_task->run_files = genSortedRunsWithSort(
+            work->sort_task->run_files = genSequenceFilesSTL(
                 work->sort_task->filename,
                 work->sort_task->start,
                 work->sort_task->size,

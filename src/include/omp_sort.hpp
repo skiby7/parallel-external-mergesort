@@ -12,9 +12,8 @@
 
 
 static std::vector<std::string> genRuns(const std::string& filename, const std::string& run_prefix) {
-    size_t num_threads = omp_get_max_threads();
     size_t file_size = getFileSize(filename);
-    size_t max_mem_per_worker = MAX_MEMORY / num_threads;
+    size_t max_mem_per_worker = MAX_MEMORY / NTHREADS;
     size_t chunk_size = std::min(file_size / 100, 3 * max_mem_per_worker); // 1% of the file or the memory per worker to keep them busy
     int fd = open(filename.c_str(), O_RDONLY);
     if (fd < 0) {
@@ -29,7 +28,7 @@ static std::vector<std::string> genRuns(const std::string& filename, const std::
     size_t start_offset = 0;
     size_t end_offset = 0;
 
-    std::vector<std::vector<std::string>> sequences(num_threads);
+    std::vector<std::vector<std::string>> sequences(NTHREADS);
 
     #pragma omp parallel
     {
@@ -78,8 +77,7 @@ static std::vector<std::string> genRuns(const std::string& filename, const std::
                         std::string uuid = generateUUID();
                         #pragma omp task firstprivate(start_offset, size, uuid)
                         {
-
-                            std::vector<std::string> seq = genSortedRunsWithSort(filename, start_offset, size, max_mem_per_worker, run_prefix + uuid);
+                            std::vector<std::string> seq = genSequenceFilesSTL(filename, start_offset, size, max_mem_per_worker, run_prefix + uuid);
                             sequences[omp_get_thread_num()]
                                 .insert(
                                     sequences[omp_get_thread_num()].end(),
@@ -94,13 +92,12 @@ static std::vector<std::string> genRuns(const std::string& filename, const std::
                 file_offset += buffer_offset;
             }
 
-
             if (end_offset > start_offset) {
                 size_t size = end_offset - start_offset;
                 std::string uuid = generateUUID();
                 #pragma omp task firstprivate(start_offset, size, uuid)
                 {
-                    std::vector<std::string> seq = genSortedRunsWithSort(filename, start_offset, size, max_mem_per_worker, run_prefix + uuid);
+                    std::vector<std::string> seq = genSequenceFilesSTL(filename, start_offset, size, max_mem_per_worker, run_prefix + uuid);
                     sequences[omp_get_thread_num()]
                         .insert(
                             sequences[omp_get_thread_num()].end(),
@@ -115,7 +112,6 @@ static std::vector<std::string> genRuns(const std::string& filename, const std::
         }
     }
     std::vector<std::string> all_sequences;
-
     size_t total_size = 0;
     for (const auto& v : sequences) total_size += v.size();
     all_sequences.reserve(total_size);
@@ -135,8 +131,6 @@ static std::vector<std::string> genRuns(const std::string& filename, const std::
 }
 
 static void ompMerge(const std::vector<std::string>& sequences, const std::string& merge_prefix, const std::string& output_file) {
-    const size_t num_threads = omp_get_max_threads();
-
     if (sequences.empty()) return;
     if (sequences.size() == 1) {
         std::filesystem::rename(sequences[0], output_file);
@@ -144,34 +138,36 @@ static void ompMerge(const std::vector<std::string>& sequences, const std::strin
     }
 
     /**
-     * If not all the threads can contribute to the merge
-     * just merge them altogether
+     * Here I could've lowered the number of threads to allow the last pass (when the number of files is equal to the number of threads)
+     * in parallel, but where there are such few files, it doesn't make a significant difference, so it can be done sequentially, like the
+     * final merge below.
      */
-    if (sequences.size() < 2 * num_threads) {
+    if (sequences.size() < 2 * NTHREADS) {
         kWayMergeFiles(sequences, output_file, MAX_MEMORY);
         return;
     }
 
     /* Ceil division */
-    const size_t group_size = (sequences.size() + num_threads - 1) / num_threads;
-    std::vector<std::string> intermediate_files(num_threads);
+    const size_t group_size = (sequences.size() + NTHREADS - 1) / NTHREADS;
+    std::vector<std::string> intermediate_files(NTHREADS);
 
     /**
-     * This all threads from 0 to n-1 take exactly group_size sequences
+     * Here all threads from 0 to n-1 take exactly group_size sequences
      * while the last thread takes the remaining sequences
      */
     #pragma omp parallel for
-    for (size_t i = 0; i < num_threads; i++) {
+    for (size_t i = 0; i < NTHREADS; i++) {
         size_t start = i * group_size;
         size_t end = std::min(start + group_size, sequences.size());
         if (start >= end) continue;
 
         std::vector<std::string> group(sequences.begin() + start, sequences.begin() + end);
         std::string filename = merge_prefix + generateUUID();
-        kWayMergeFiles(group, filename, MAX_MEMORY / num_threads);
+        kWayMergeFiles(group, filename, MAX_MEMORY / NTHREADS);
         intermediate_files[i] = filename;
     }
 
+    /* Sometimes I got an empty string, so just remove it */
     intermediate_files.erase(
         std::remove_if(intermediate_files.begin(), intermediate_files.end(),
                        [](const std::string& f) { return f.empty(); }),

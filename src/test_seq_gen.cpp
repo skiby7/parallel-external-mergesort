@@ -21,18 +21,16 @@ int main(int argc, char *argv[]) {
     std::string run_prefix = p.parent_path().string() + "/run#";
     std::vector<std::string> sequences;
     TIMERSTART(std_sort)
-    genSortedRunsWithSort(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
+    sequences = genSequenceFilesSTL(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
     TIMERSTOP(std_sort)
-    sequences = findFiles(run_prefix);
     std::cout << "Number of sorted runs: " << sequences.size() << std::endl;
     for (const auto& seq : sequences) {
         deleteFile(seq.c_str());
     }
 
     TIMERSTART(snow_plow)
-    genSequenceFiles(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
+    sequences = genSequenceFiles(filename, 0, getFileSize(filename), MAX_MEMORY, run_prefix);
     TIMERSTOP(snow_plow)
-    sequences = findFiles(run_prefix);
     std::cout << "Number of sorted runs: " << sequences.size() << std::endl;
     for (const auto& seq : sequences) {
         deleteFile(seq.c_str());
