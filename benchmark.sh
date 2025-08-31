@@ -121,7 +121,6 @@ run_mpi_strong() {
         echo -e "(nnodes=$i, nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
         if [[ -z "$SRUN" ]]; then
             MPI_RUN="mpirun -np $i"
-            echo "DEBUG: srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
         fi
         SRUN_MPI=${MPI_RUN-"srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"}
         for j in $(seq 1 $NRUNS); do
@@ -151,7 +150,6 @@ run_mpi_weak() {
         echo -e "(nnodes=$i, filesize=$($SRUN stat -c%s $INPUT_FILE | tr -d '\n'), nthreads=$NTHREADS, max_mem=$USABLE_MEM)" | tee -a results/$LOG_FILE
         if [[ -z "$SRUN" ]]; then
             MPI_RUN="mpirun -np $i"
-            echo "DEBUG: srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"
         fi
         SRUN_MPI=${MPI_RUN-"srun --nodelist=${NODELIST} --ntasks-per-node=1 --mpi=pmix"}
         for j in $(seq 1 $NRUNS); do

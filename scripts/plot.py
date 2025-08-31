@@ -5,8 +5,10 @@ import numpy as np
 import plotly.graph_objects as go
 from collections import defaultdict
 
-# Base name (no extension)
+# Base name
 base = sys.argv[1]
+if base.endswith('.log'):
+    base = base[:-4]
 
 # Prepare paths
 paths = {
@@ -182,7 +184,7 @@ if os.getenv("PLOT"):
 
 # === Separate plot: MPI-weak actual vs ideal ===
 # For weak scaling, ideal speedup grows linearly with the number of nodes
-ideal_weak = {n: n for n in nodes_weak}
+ideal_weak = {n: 1 for n in nodes_weak}
 
 fig_weak = go.Figure()
 
