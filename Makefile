@@ -50,7 +50,7 @@ mergesort_mpi_debug: $(SRC_DIR)/mergesort_mpi.cpp $(SRC_DIR)/include/
 
 
 clean:
-	rm -f $(TARGETS) $(DEBUG_TARGETS) gen_file
+	rm -f $(TARGETS) $(DEBUG_TARGETS) gen_file test_seq_gen
 
 cleanall: clean
 	rm -f *.o *~ *.csv
