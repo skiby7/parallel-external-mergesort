@@ -13,20 +13,19 @@
 
 static inline void usage(const char *argv0) {
     std::printf("--------------------\n");
-    std::printf("Usage: %s [options]\n", argv0);
+    std::printf("Usage: %s [options] /path/to/file\n", argv0);
     std::printf("\nOptions:\n");
     std::printf(" -t T: number of threads (default=%d)\n", NTHREADS);
     std::printf(" -k: use k-way merge in the sequential version (default=%s)\n", KWAY_MERGE ? "true" : "false");
     std::printf(" -m M: set the max memory usage (default=%ld)\n", MAX_MEMORY);
     std::printf(" -p string: set the tmp location for the worker nodes (MPI) (default=%s)\n", TMP_LOCATION);
     std::printf(" -x: set FF_NO_MAPPING variable to false (default=%s)\n", FF_NO_MAPPING ? "true" : "false");
-    std::printf(" -y: set FF_BLOCKING_MODE variable to false (default=%s)\n", FF_BLOCKING_MODE ? "true" : "false");
+    std::printf(" -y: set FF_BLOCKING_MODE variable to true (default=%s)\n", FF_BLOCKING_MODE ? "true" : "false");
     std::printf("--------------------\n");
     /**
      * These options are still relevant for the generation of the file,
      * so I just keep them here as a reminder
      */
-    // std::printf(" -d D: change feistel rounds to change the Record->key value (default=%d)\n", ROUNDS);
     // std::printf(" -s N: number array size (default s=%d)\n", ARRAY_SIZE);
     // std::printf(" -r R: record payload size in bytes (default r=%d)\n", RECORD_SIZE);
 }

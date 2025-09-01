@@ -9,3 +9,4 @@ mergesort_ff_debug
 mergesort_mpi_debug
 gen_file
 test_seq_gen
+server_run.sh

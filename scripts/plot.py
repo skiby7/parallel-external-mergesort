@@ -105,10 +105,8 @@ nodes_weak = []
 mpi_weak_speedup = {}
 if len(weak_entries) > 0:
     base_nodes, base_fs, base_time = weak_entries[0]
-    print(base_time)
     for nn, fs, t in weak_entries:
         mpi_weak_speedup[nn] = base_time / t
-    print(mpi_weak_speedup)
     nodes_weak = sorted(mpi_weak_speedup)
 
 # === Plot everything together ===
@@ -183,7 +181,6 @@ if os.getenv("PLOT"):
     fig2.show()
 
 # === Separate plot: MPI-weak actual vs ideal ===
-# For weak scaling, ideal speedup grows linearly with the number of nodes
 ideal_weak = {n: 1 for n in nodes_weak}
 
 fig_weak = go.Figure()
