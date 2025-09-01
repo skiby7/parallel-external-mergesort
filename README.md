@@ -100,13 +100,8 @@ pip install plotly numpy
 
 ### Plot results:
 ```bash
-# Point to the log file (omit _mpi* suffix)
-python3 scripts/plot.py /path/to/logfile
+# Point to the main log file (the one without _mpi* suffix)
+PLOT=1 python3 scripts/plot.py /path/to/logfile
 ```
 
 This will generate plots for runtime and speedup comparison.
-
----
-
-## License
-This project is for academic and research purposes.
